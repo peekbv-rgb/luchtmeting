@@ -1,0 +1,17 @@
+# Render Blueprint — statische site, geen build-stap.
+# Publiceren: Render dashboard -> New -> Blueprint -> koppel deze repo.
+services:
+  - type: web
+    name: toren-luchtdebiet
+    runtime: static
+    buildCommand: echo "Geen build-stap; statische HTML."
+    staticPublishPath: .
+    pullRequestPreviewsEnabled: true
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache
