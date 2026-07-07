@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Toren · Luchthoeveelheidsmeting</title>
+<style>
+  :root{
+    --ink:#0b1220; --panel:#0e1729; --paper:#eef2f6; --card:#ffffff;
+    --line:#d3dae2; --line-soft:#e6ebf0; --text:#16202e; --muted:#657185;
+    --accent:#0e7490; --accent-ink:#083344; --amber:#c2740a; --flow:#22d3ee;
+    --warn:#c2410c;
+    --mono: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{font-family:var(--sans);color:var(--text);background:var(--paper);line-height:1.45;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1140px;margin:0 auto;padding:28px 20px 64px}
+  header.masthead{display:flex;align-items:baseline;justify-content:space-between;gap:16px;
+    border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:26px;flex-wrap:wrap}
+  .masthead h1{font-size:clamp(20px,3vw,28px);margin:0;font-weight:800;letter-spacing:-.02em}
+  .masthead .sub{color:var(--muted);font-size:13px;font-family:var(--mono);letter-spacing:.02em}
+  .layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:26px;align-items:start}
+  @media (max-width:900px){.layout{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 20px 22px;margin-bottom:20px}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:0 0 16px;font-weight:700;display:flex;align-items:center;gap:9px}
+  .card h2 .idx{font-family:var(--mono);color:var(--card);background:var(--accent);width:20px;height:20px;display:grid;place-items:center;border-radius:5px;font-size:11px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px 16px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px 16px}
+  @media (max-width:560px){.grid2,.grid3{grid-template-columns:1fr}}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field label{font-size:12px;color:var(--muted);font-weight:600}
+  .field .hint{font-size:11px;color:var(--muted)}
+  .inputrow{display:flex;align-items:stretch}
+  input,select{font-family:var(--mono);font-size:15px;color:var(--text);border:1px solid var(--line);background:#fbfcfd;border-radius:8px;padding:9px 11px;width:100%;transition:border-color .12s, box-shadow .12s}
+  .inputrow input{border-top-right-radius:0;border-bottom-right-radius:0}
+  .inputrow .unit{display:grid;place-items:center;padding:0 12px;min-width:52px;font-family:var(--mono);font-size:13px;color:var(--muted);background:#eff3f6;border:1px solid var(--line);border-left:none;border-top-right-radius:8px;border-bottom-right-radius:8px}
+  input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(14,116,144,.14)}
+
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-bottom:16px}
+  .seg button{font-family:var(--sans);font-size:13px;font-weight:600;padding:8px 16px;border:none;background:var(--card);color:var(--muted);cursor:pointer}
+  .seg button.active{background:var(--accent);color:#fff}
+  .seg button+button{border-left:1px solid var(--line)}
+
+  .schema{background:var(--ink);border-radius:12px;padding:18px 16px 20px;color:#cdd8e6;position:sticky;top:20px}
+  .schema h2{color:#8fa2ba;border:none;margin-bottom:6px}
+  .schema .cap{font-size:11px;color:#5f7188;font-family:var(--mono);margin:0 0 4px}
+  svg.tower{display:block;width:100%;height:auto}
+  .flowline{stroke:var(--flow);stroke-width:2;stroke-dasharray:5 9;opacity:.85;animation:flow 1.1s linear infinite}
+  @keyframes flow{to{stroke-dashoffset:-14}}
+  @media (prefers-reduced-motion:reduce){.flowline{animation:none}}
+  .schema-readout{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+  .chip{background:var(--panel);border:1px solid #1e2b42;border-radius:8px;padding:8px 10px}
+  .chip .k{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#6b7d96}
+  .chip .v{font-family:var(--mono);font-size:16px;color:#eaf1f8;font-weight:600}
+  .chip .v small{font-size:11px;color:#8fa2ba;font-weight:400}
+
+  .result{background:linear-gradient(180deg,#0f766e08,#0e749003);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:16px 18px;display:grid;grid-template-columns:1fr 1fr;gap:6px 18px}
+  .big{grid-column:1/-1;display:flex;align-items:baseline;justify-content:space-between;padding-bottom:12px;margin-bottom:6px;border-bottom:1px solid var(--line-soft)}
+  .big .label{font-size:13px;color:var(--muted);font-weight:600}
+  .big .num{font-family:var(--mono);font-weight:800;letter-spacing:-.01em;font-size:clamp(24px,4vw,34px);color:var(--accent-ink)}
+  .big .num small{font-size:15px;color:var(--muted);font-weight:600;margin-left:4px}
+  .kv{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;border-bottom:1px dotted var(--line-soft)}
+  .kv .k{color:var(--muted)} .kv .v{font-family:var(--mono);font-weight:600;color:var(--text)}
+
+  table.sections{width:100%;border-collapse:collapse;margin-top:4px;font-size:13px}
+  table.sections th,table.sections td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--line-soft)}
+  table.sections th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+  table.sections td:first-child,table.sections th:first-child{text-align:left}
+  table.sections td{font-family:var(--mono)}
+  table.sections tr.here td{background:#0e74900e}
+  table.sections tr.here td:first-child{font-weight:700;color:var(--accent-ink)}
+  .tag{font-family:var(--sans);font-size:10px;font-weight:700;color:var(--accent);background:#0e749015;border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+
+  .note{font-size:12px;color:var(--muted);line-height:1.5;margin-top:14px;border-top:1px solid var(--line-soft);padding-top:12px}
+  .note b{color:var(--text)}
+  .warnbox{display:none;font-size:12.5px;color:var(--warn);background:#c2410c0d;border:1px solid #c2410c33;border-radius:8px;padding:10px 12px;margin-top:12px;line-height:1.5}
+  .warnbox.show{display:block}
+
+  .tvlayout{display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start}
+  @media (max-width:640px){.tvlayout{grid-template-columns:1fr}}
+  .tvdraw{background:#0b1220;border-radius:10px;padding:12px}
+  .tvdraw svg{display:block;width:100%;height:auto}
+  .tvdraw .cap{font-size:11px;color:#6b7d96;font-family:var(--mono);text-align:center;margin-top:6px}
+  table.tv{width:100%;border-collapse:collapse;font-size:13px}
+  table.tv th,table.tv td{padding:5px 8px;border-bottom:1px solid var(--line-soft);text-align:center}
+  table.tv th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700}
+  table.tv td:first-child,table.tv th:first-child{text-align:left;font-family:var(--mono);color:var(--muted)}
+  table.tv input{padding:6px 8px;font-size:13px;text-align:right}
+  .tvhead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+  .tvstat{font-family:var(--mono);font-size:13px;color:var(--accent-ink)}
+  .tvstat b{font-weight:700}
+  .prof{margin-top:14px} .prof svg{display:block;width:100%;height:auto;max-width:360px}
+  footer{margin-top:8px;color:var(--muted);font-size:11px;font-family:var(--mono);text-align:right}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <div><h1>Luchthoeveelheidsmeting toren</h1></div>
+    <div class="sub">Δp → m/s → m³/h · neerwaartse stroming · dynamische ρ-compensatie</div>
+  </header>
+
+  <div class="layout">
+    <div>
+      <div class="card">
+        <h2><span class="idx">1</span> Geometrie toren</h2>
+        <div class="grid3">
+          <div class="field"><label for="dRing">Bovenring — diameter</label>
+            <div class="inputrow"><input id="dRing" type="number" step="1" value="700"><span class="unit">mm</span></div></div>
+          <div class="field"><label for="dVenturi">Venturi (keel) — diameter</label>
+            <div class="inputrow"><input id="dVenturi" type="number" step="1" value="400"><span class="unit">mm</span></div></div>
+          <div class="field"><label for="dOnder">Opening onderzijde — diameter</label>
+            <div class="inputrow"><input id="dOnder" type="number" step="1" value="700"><span class="unit">mm</span></div></div>
+        </div>
+        <div class="field" style="margin-top:14px;max-width:280px">
+          <label for="meetLoc">Meetlocatie Pitotbuis</label>
+          <select id="meetLoc">
+            <option value="ring" selected>Bovenring (intrede)</option>
+            <option value="venturi">Venturi (keel)</option>
+            <option value="onder">Opening onderzijde (uittrede)</option>
+          </select>
+          <span class="hint">Lucht stroomt van boven naar beneden. Tip naar boven richten, ín de neerdalende lucht. Totaaldruk → +, statisch → −.</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="idx">2</span> Luchtcondities op meetpunt — dichtheid</h2>
+        <div class="grid3">
+          <div class="field"><label for="temp">Luchttemperatuur</label>
+            <div class="inputrow"><input id="temp" type="number" step="0.1" value="20"><span class="unit">°C</span></div></div>
+          <div class="field"><label for="rv">Relatieve vochtigheid</label>
+            <div class="inputrow"><input id="rv" type="number" step="1" min="0" max="100" value="60"><span class="unit">%</span></div></div>
+          <div class="field"><label for="baro">Barometerdruk</label>
+            <div class="inputrow"><input id="baro" type="number" step="0.1" value="1013.25"><span class="unit">hPa</span></div></div>
+        </div>
+        <div class="note">De dichtheid ρ voor de Δp→v-omrekening geldt op de <b>plek van de Pitotbuis</b>. Bij een verdampingskoeltoren is de lucht daar vaak bijna verzadigd — vul de condities in de luchtstroom op het meetpunt in, niet per se de omgeving.</div>
+      </div>
+
+      <div class="card">
+        <h2><span class="idx">3</span> Meting — differentiële druk</h2>
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap">
+          <div class="seg" role="tablist">
+            <button id="btnSingle" class="active" onclick="setMode('single')">Enkele waarde</button>
+            <button id="btnTraverse" onclick="setMode('traverse')">Traverse (grid)</button>
+          </div>
+          <div style="display:flex;gap:14px;flex-wrap:wrap">
+            <div class="field" style="max-width:210px;margin-bottom:16px">
+              <label for="inst">Instrument</label>
+              <select id="inst">
+                <option value="pitot" selected>Pitotbuis (Δp)</option>
+                <option value="anemo">Anemometer (v direct)</option>
+              </select>
+              <span class="hint">In een sproeizone: anemometer (loopt niet vol water).</span>
+            </div>
+            <div class="field" id="probeField" style="max-width:190px;margin-bottom:16px">
+              <label for="probeType">Sondetype</label>
+              <select id="probeType">
+                <option value="1.00" selected>Prandtl (Cp 1,00)</option>
+                <option value="0.84">S-type (Cp 0,84)</option>
+                <option value="manual">Handmatige Cp</option>
+              </select>
+              <div class="inputrow" style="margin-top:6px"><input id="cp" type="number" step="0.01" value="1.00" disabled><span class="unit">Cp</span></div>
+            </div>
+            <div class="field" id="unitField" style="max-width:170px;margin-bottom:16px">
+              <label for="dpUnit">Eenheid Δp-invoer</label>
+              <select id="dpUnit">
+                <option value="1" selected>Pa</option>
+                <option value="100">mbar (= hPa)</option>
+              </select>
+              <span class="hint">Bij lage Δp geeft Pa de fijnste uitlezing.</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="panelSingle">
+          <div class="grid2">
+            <div class="field"><label for="dp" id="dpLabel">Δp gemeten (dynamische druk)</label>
+              <input id="dp" type="text" value="3.0" inputmode="decimal">
+              <span class="hint" id="dpHint">Eén waarde, of meerdere punten met komma/spatie gescheiden — worden per punt omgerekend en gemiddeld.</span></div>
+            <div class="field"><label for="k">Profielfactor k</label>
+              <div class="inputrow"><input id="k" type="number" step="0.01" value="1.00"><span class="unit">×</span></div>
+              <span class="hint">1.00 bij een volledige traverse · ≈0.85–0.90 bij alleen midden meten.</span></div>
+          </div>
+        </div>
+
+        <div id="panelTraverse" style="display:none">
+          <div class="tvhead">
+            <div class="field" style="max-width:200px">
+              <label for="rings">Ringen (equal-area)</label>
+              <select id="rings">
+                <option value="3">3 ringen · 12 punten</option>
+                <option value="5" selected>5 ringen · 20 punten</option>
+              </select>
+            </div>
+            <div class="tvstat">v-gemiddeld: <b><span id="tvVavg">–</span></b> m/s · <span id="tvNfill">0</span> punten</div>
+          </div>
+          <div class="tvlayout">
+            <div>
+              <div class="tvdraw">
+                <div id="gridSvg"></div>
+                <div class="cap">doorsnede meetsectie · kleur = snelheid</div>
+              </div>
+              <div class="prof"><div id="profSvg"></div></div>
+            </div>
+            <div>
+              <table class="tv">
+                <thead><tr><th>Insteek v/d wand (mm)</th><th id="thA">Diam. A · Δp</th><th id="thB">Diam. B · Δp</th></tr></thead>
+                <tbody id="gridBody"></tbody>
+              </table>
+              <div class="note" style="margin-top:10px"><b>Insteekdiepte</b> = afstand van de binnenwand tot de tip, horizontaal langs de diameter — alle punten op dezelfde hoogte (één meetvlak), met twee toegangsgaatjes 90° uit elkaar (diameter A en B). Vul de gemeten Δp per punt in; leeg = overslaan. De snelheden worden per punt berekend en gemiddeld (equal-area = oppervlakte-gemiddelde).<br><br><b>Richting:</b> opening tegen de stroom in — bij neerwaartse stroming dus <b>naar boven</b>. <b>Aansluiting:</b> totaaldruk (tip) → <b>+</b>, statische druk (wandaftakking of statische gaatjes) → <b>−</b>; Δp moet positief zijn.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="warnbox" id="lowWarn"></div>
+      </div>
+
+      <div class="card">
+        <h2><span class="idx">4</span> Resultaat</h2>
+        <div class="result">
+          <div class="big"><span class="label">Luchtdebiet Q</span><span class="num"><span id="qh">–</span><small>m³/h</small></span></div>
+          <div class="kv"><span class="k">Q</span><span class="v"><span id="qs">–</span> m³/s</span></div>
+          <div class="kv"><span class="k">Snelheid op meetpunt</span><span class="v"><span id="vmeet">–</span> m/s</span></div>
+          <div class="kv"><span class="k">v gecorrigeerd</span><span class="v"><span id="vgem">–</span> m/s</span></div>
+          <div class="kv"><span class="k">Meetpunten</span><span class="v"><span id="npts">–</span></span></div>
+        </div>
+        <table class="sections" style="margin-top:18px">
+          <thead><tr><th>Doorsnede</th><th>Ø (mm)</th><th>A (m²)</th><th>v (m/s)</th><th>Δp verwacht (Pa)</th></tr></thead>
+          <tbody id="secBody"></tbody>
+        </table>
+        <div class="note" id="rhoNote"></div>
+      </div>
+
+      <div class="card">
+        <h2><span class="idx">5</span> Verdampingskoeling — max. waterinbreng (100% verzadiging)</h2>
+        <div class="result">
+          <div class="big"><span class="label">Max. waterdebiet</span><span class="num"><span id="wMax">–</span><small>L/h</small></span></div>
+          <div class="kv"><span class="k">Water per kg droge lucht</span><span class="v"><span id="wPerKg">–</span> g/kg</span></div>
+          <div class="kv"><span class="k">= liter per kg droge lucht</span><span class="v"><span id="wPerKgL">–</span> L/kg</span></div>
+          <div class="kv"><span class="k">Massadebiet droge lucht</span><span class="v"><span id="mDa">–</span> kg/h</span></div>
+          <div class="kv"><span class="k">Vochtinhoud intrede</span><span class="v"><span id="evWin">–</span> g/kg</span></div>
+          <div class="kv"><span class="k">Natteboltemp. (≈ uitblaas)</span><span class="v"><span id="evTwb">–</span> °C</span></div>
+          <div class="kv"><span class="k">Uitblaas onderin</span><span class="v"><span id="evTout">–</span> °C · 100% RV</span></div>
+          <div class="kv"><span class="k">Koeling ΔT</span><span class="v"><span id="evDT">–</span> °C</span></div>
+        </div>
+        <div class="note" id="evNote"></div>
+      </div>
+    </div>
+
+    <aside>
+      <div class="schema">
+        <h2>Stromingsschema</h2>
+        <p class="cap">stroming ▼ omlaag · Q constant · v ~ 1/A</p>
+        <svg class="tower" viewBox="0 0 300 400" aria-label="Toren doorsnede">
+          <polygon id="towerL" points="" fill="#16223a" stroke="#2b3c5a" stroke-width="1.5"/>
+          <polygon id="towerR" points="" fill="#16223a" stroke="#2b3c5a" stroke-width="1.5"/>
+          <g id="flowGroup"></g>
+          <g id="labels" font-family="ui-monospace,monospace" font-size="11" fill="#9db0c8"></g>
+        </svg>
+        <div class="schema-readout">
+          <div class="chip"><div class="k">ρ lucht</div><div class="v"><span id="rhoChip">–</span> <small>kg/m³</small></div></div>
+          <div class="chip"><div class="k">v boven</div><div class="v"><span id="vRingChip">–</span> <small>m/s</small></div></div>
+          <div class="chip"><div class="k">v venturi</div><div class="v"><span id="vVentChip">–</span> <small>m/s</small></div></div>
+          <div class="chip"><div class="k">v onder</div><div class="v"><span id="vOnderChip">–</span> <small>m/s</small></div></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+  <footer>Toren-debiet · lokaal, geen dataverzending · v3</footer>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const Rd=287.058, Rv=461.495;
+let mode="single";
+let gridPoints=[];
+
+function eSat(Tc){ return 611.2*Math.exp(17.62*Tc/(243.12+Tc)); }
+function dewPoint(Tc,rv){ const g=Math.log(Math.max(rv,0.01)/100)+17.62*Tc/(243.12+Tc); return 243.12*g/(17.62-g); }
+function humRatio(e,p){ return 0.622*e/Math.max(p-e,1); }
+function enth(Tc,W){ return 1.006*Tc + W*(2501+1.86*Tc); } // kJ/kg droge lucht
+// Adiabatische verzadigingstemperatuur (~ natteboltemp.), bisectie tussen dauwpunt en droge bol
+function wetBulb(Tc,rv,p){
+  const e_in=Math.max(0,Math.min(rv,100))/100*eSat(Tc), Win=humRatio(e_in,p), hin=enth(Tc,Win);
+  const g=Tw=>{ const Ws=humRatio(eSat(Tw),p); return hin+(Ws-Win)*4.186*Tw - enth(Tw,Ws); };
+  let lo=dewPoint(Tc,rv), hi=Tc;
+  if(hi-lo<0.001) return Tc;
+  for(let i=0;i<60;i++){ const mid=(lo+hi)/2; if(g(mid)>0) lo=mid; else hi=mid; }
+  return (lo+hi)/2;
+}
+function humidDensity(Tc,rv,pPa){ const Tk=Tc+273.15,es=eSat(Tc),e=Math.max(0,Math.min(rv,100))/100*es;
+  return {rho:(pPa-e)/(Rd*Tk)+e/(Rv*Tk), es, e, dew:dewPoint(Tc,rv), rhoDry:pPa/(Rd*Tk)}; }
+function area(dmm){ const d=dmm/1000; return Math.PI/4*d*d; }
+function parseList(str){ return String(str).split(/[,;\s]+/).map(s=>parseFloat(s.replace(',','.'))).filter(v=>!isNaN(v)); }
+function num(v){ const x=parseFloat(String(v).replace(',','.')); return isNaN(x)?null:x; }
+function sectionD(){ return {ring:+$("dRing").value, venturi:+$("dVenturi").value, onder:+$("dOnder").value}[$("meetLoc").value]; }
+
+function vColor(t){
+  t=Math.max(0,Math.min(1,t));
+  let c1,c2,f;
+  if(t<0.5){c1=[29,158,117];c2=[239,159,39];f=t/0.5;}
+  else{c1=[239,159,39];c2=[226,75,74];f=(t-0.5)/0.5;}
+  return `rgb(${Math.round(c1[0]+(c2[0]-c1[0])*f)},${Math.round(c1[1]+(c2[1]-c1[1])*f)},${Math.round(c1[2]+(c2[2]-c1[2])*f)})`;
+}
+
+/* ---- traverse grid ---- */
+function buildGrid(){
+  const D=sectionD(); if(!(D>0)) return;
+  const n=+$("rings").value, R=D/2;
+  const old={}; document.querySelectorAll(".tp").forEach(i=>{ if(i.value) old[i.id]=i.value; });
+  const rk=[]; for(let k=1;k<=n;k++) rk.push(R*Math.sqrt((2*k-1)/(2*n)));
+  const rs=[]; rk.forEach(r=>rs.push(-r)); rk.forEach(r=>rs.push(r)); rs.sort((a,b)=>a-b);
+
+  let rows="";
+  rs.forEach((rSigned,idx)=>{
+    const depth=R+rSigned;
+    const va=old["dpA"+idx]||"", vb=old["dpB"+idx]||"";
+    rows+=`<tr><td>${depth.toFixed(0)}</td>`+
+      `<td><input class="tp" id="dpA${idx}" type="text" inputmode="decimal" value="${va}"></td>`+
+      `<td><input class="tp" id="dpB${idx}" type="text" inputmode="decimal" value="${vb}"></td></tr>`;
+  });
+  $("gridBody").innerHTML=rows;
+
+  drawGridSvg(R,n,rs);
+
+  gridPoints=[];
+  rs.forEach((rSigned,idx)=>{
+    gridPoints.push({ptId:"ptA"+idx,inId:"dpA"+idx,rmm:Math.abs(rSigned)});
+    gridPoints.push({ptId:"ptB"+idx,inId:"dpB"+idx,rmm:Math.abs(rSigned)});
+  });
+  document.querySelectorAll(".tp").forEach(i=>i.addEventListener("input",compute));
+}
+
+function drawGridSvg(R,n,rs){
+  const cx=180,cy=180,Rpx=140,s=Rpx/R;
+  let svg=`<svg viewBox="0 0 360 360" role="img" aria-label="Traversegrid doorsnede">`;
+  for(let k=1;k<n;k++){ const rp=Rpx*Math.sqrt(k/n);
+    svg+=`<circle cx="${cx}" cy="${cy}" r="${rp.toFixed(1)}" fill="none" stroke="#334155" stroke-width="0.6" stroke-dasharray="3 4" opacity="0.8"/>`; }
+  svg+=`<circle cx="${cx}" cy="${cy}" r="${Rpx}" fill="none" stroke="#64748b" stroke-width="1.3"/>`;
+  svg+=`<line x1="${cx-Rpx}" y1="${cy}" x2="${cx+Rpx}" y2="${cy}" stroke="#475569" stroke-width="0.6"/>`;
+  svg+=`<line x1="${cx}" y1="${cy-Rpx}" x2="${cx}" y2="${cy+Rpx}" stroke="#475569" stroke-width="0.6"/>`;
+  svg+=`<circle cx="${cx}" cy="${cy}" r="3" fill="none" stroke="#64748b" stroke-width="1"/>`;
+  rs.forEach((rSigned,idx)=>{
+    const p=rSigned*s;
+    svg+=`<circle id="ptA${idx}" cx="${(cx+p).toFixed(1)}" cy="${cy}" r="5" fill="#cbd3db"/>`;
+    svg+=`<circle id="ptB${idx}" cx="${cx}" cy="${(cy+p).toFixed(1)}" r="5" fill="#cbd3db"/>`;
+  });
+  svg+=`<text x="${cx}" y="18" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="#6b7d96">Diam. B</text>`;
+  svg+=`<text x="${cx+Rpx+6}" y="${cy+4}" font-family="ui-monospace,monospace" font-size="11" fill="#6b7d96">A</text>`;
+  svg+=`</svg>`;
+  $("gridSvg").innerHTML=svg;
+}
+
+function drawProfile(pts,R){
+  if(!pts.length){ $("profSvg").innerHTML=""; return; }
+  const W=360,H=150,x0=42,x1=340,y0=118,y1=16;
+  const vmax=Math.max(...pts.map(p=>p.v),0.1);
+  const X=r=>x0+(r/R)*(x1-x0), Y=v=>y0-(v/vmax)*(y0-y1);
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Snelheidsprofiel">`;
+  s+=`<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}" stroke="#cbd3db" stroke-width="1"/>`;
+  s+=`<line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1}" stroke="#cbd3db" stroke-width="1"/>`;
+  s+=`<text x="${(x0+x1)/2}" y="${H-2}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#657185">straal (mm) →</text>`;
+  s+=`<text x="6" y="${y1+8}" font-family="ui-monospace,monospace" font-size="10" fill="#657185">v m/s</text>`;
+  s+=`<text x="${x1}" y="${y0+12}" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#94a3b8">${R.toFixed(0)}</text>`;
+  s+=`<text x="${x0-4}" y="${y1+4}" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#94a3b8">${vmax.toFixed(1)}</text>`;
+  pts.forEach(p=>{ s+=`<circle cx="${X(p.rmm).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="4" fill="${p.col}"/>`; });
+  s+=`</svg>`;
+  $("profSvg").innerHTML=s;
+}
+
+/* ---- storage ---- */
+const STORE="torenDebiet_v2";
+function save(){ try{
+  const o={mode,rings:$("rings").value};
+  ["dRing","dVenturi","dOnder","meetLoc","temp","rv","baro","dp","k","dpUnit","inst","probeType","cp"].forEach(id=>o[id]=$(id).value);
+  const tv={}; document.querySelectorAll(".tp").forEach(i=>{ if(i.value) tv[i.id]=i.value; });
+  o.tv=tv; localStorage.setItem(STORE,JSON.stringify(o));
+}catch(e){} }
+function load(){ try{
+  const o=JSON.parse(localStorage.getItem(STORE)||"{}");
+  ["dRing","dVenturi","dOnder","meetLoc","temp","rv","baro","dp","k","rings","dpUnit","inst","probeType","cp"].forEach(id=>{ if(o[id]!==undefined&&$(id)) $(id).value=o[id]; });
+  if(o.mode) mode=o.mode;
+  buildGrid();
+  if(o.tv) Object.keys(o.tv).forEach(id=>{ if($(id)) $(id).value=o.tv[id]; });
+}catch(e){ buildGrid(); } }
+
+function updateProbe(){
+  const pt=$("probeType").value;
+  if(pt==="manual"){ $("cp").disabled=false; }
+  else { $("cp").value=pt; $("cp").disabled=true; }
+}
+function setUnitLabels(){
+  const isPitot=$("inst").value==="pitot";
+  const u=$("dpUnit").selectedOptions[0].value==="100"?"mbar":"Pa";
+  $("unitField").style.display=isPitot?"":"none";
+  $("probeField").style.display=isPitot?"":"none";
+  if(isPitot){
+    $("dpLabel").textContent="Δp gemeten (dynamische druk)";
+    $("thA").textContent="Diam. A · Δp ("+u+")";
+    $("thB").textContent="Diam. B · Δp ("+u+")";
+    $("dpHint").textContent="Eén waarde, of meerdere punten gescheiden door komma/spatie ("+u+"). Worden per punt omgerekend naar v en gemiddeld.";
+  } else {
+    $("dpLabel").textContent="v gemeten (anemometer)";
+    $("thA").textContent="Diam. A · v (m/s)";
+    $("thB").textContent="Diam. B · v (m/s)";
+    $("dpHint").textContent="Eén waarde, of meerdere punten gescheiden door komma/spatie (m/s). Worden gemiddeld.";
+  }
+}
+
+function setMode(m){
+  mode=m;
+  $("btnSingle").classList.toggle("active",m==="single");
+  $("btnTraverse").classList.toggle("active",m==="traverse");
+  $("panelSingle").style.display = m==="single"?"":"none";
+  $("panelTraverse").style.display = m==="traverse"?"":"none";
+  compute();
+}
+
+function compute(){
+  const Tc=+$("temp").value, rv=+$("rv").value, baro=+$("baro").value;
+  const {rho,es,e,dew,rhoDry}=humidDensity(Tc,rv,baro*100);
+  const A={ring:area(+$("dRing").value),venturi:area(+$("dVenturi").value),onder:area(+$("dOnder").value)};
+  const loc=$("meetLoc").value;
+  const uf=+$("dpUnit").value;
+  const isPitot=$("inst").value==="pitot";
+  const cp=isPitot?(parseFloat($("cp").value)||1):1;
+
+  let vMeet=0,vGem=0,nPts=0,dpMean=0;
+
+  if(mode==="single"){
+    const raw=parseList($("dp").value).filter(x=>x>=0);
+    const vP=isPitot?raw.map(d=>cp*Math.sqrt(2*(d*uf)/rho)):raw.slice();
+    vMeet=vP.length?vP.reduce((a,b)=>a+b,0)/vP.length:0;
+    vGem=vMeet*(+$("k").value); nPts=vP.length;
+    dpMean=(isPitot&&raw.length)?raw.reduce((a,b)=>a+b*uf,0)/raw.length:0;
+  } else {
+    gridPoints.forEach(gp=>{ const el=$(gp.ptId); if(el) el.setAttribute("fill","#cbd3db"); });
+    const pts=[];
+    gridPoints.forEach(gp=>{ const val=num(($(gp.inId)||{}).value); if(val!==null&&val>=0){ const v=isPitot?cp*Math.sqrt(2*(val*uf)/rho):val; pts.push({...gp,v,dp:isPitot?val*uf:0}); } });
+    if(pts.length){
+      const vs=pts.map(p=>p.v), vmin=Math.min(...vs), vmax=Math.max(...vs);
+      pts.forEach(p=>{ p.col=vColor(vmax>vmin?(p.v-vmin)/(vmax-vmin):0.5); const el=$(p.ptId); if(el) el.setAttribute("fill",p.col); });
+      vMeet=vs.reduce((a,b)=>a+b,0)/vs.length; vGem=vMeet; nPts=pts.length;
+      dpMean=pts.reduce((a,b)=>a+b.dp,0)/pts.length;
+    }
+    drawProfile(pts,sectionD()/2);
+    $("tvVavg").textContent=nPts?vMeet.toFixed(3):"–";
+    $("tvNfill").textContent=nPts;
+  }
+
+  const Ameet=A[loc], Q=vGem*Ameet;
+  const vSec={ring:Q/A.ring,venturi:Q/A.venturi,onder:Q/A.onder};
+
+  $("qh").textContent=Q>0?(Q*3600).toFixed(0):"–";
+  $("qs").textContent=Q>0?Q.toFixed(3):"–";
+  $("vmeet").textContent=nPts?vMeet.toFixed(3):"–";
+  $("vgem").textContent=nPts?vGem.toFixed(3):"–";
+  $("npts").textContent=nPts||"–";
+  $("rhoChip").textContent=rho.toFixed(4);
+  $("vRingChip").textContent=Q>0?vSec.ring.toFixed(2):"–";
+  $("vVentChip").textContent=Q>0?vSec.venturi.toFixed(2):"–";
+  $("vOnderChip").textContent=Q>0?vSec.onder.toFixed(2):"–";
+
+  // ---- verdampingskoeling (intredelucht = condities hierboven) ----
+  const pPa=baro*100;
+  const e_in=Math.max(0,Math.min(rv,100))/100*eSat(Tc);
+  const Win=humRatio(e_in,pPa);
+  const Twb=wetBulb(Tc,rv,pPa);
+  const Wout=humRatio(eSat(Twb),pPa);
+  const dW=Math.max(0,Wout-Win);                 // kg water / kg droge lucht
+  const rho_da=(pPa-e_in)/(Rd*(Tc+273.15));      // droge-lucht dichtheid intrede
+  const mDa=rho_da*Q;                            // kg droge lucht / s
+  $("evWin").textContent=(Win*1000).toFixed(2);
+  $("evTwb").textContent=Twb.toFixed(1);
+  $("evTout").textContent=Twb.toFixed(1);
+  $("evDT").textContent=(Tc-Twb).toFixed(1);
+  $("wPerKg").textContent=(dW*1000).toFixed(2);
+  $("wPerKgL").textContent=dW.toFixed(4);
+  $("mDa").textContent=Q>0?(mDa*3600).toFixed(0):"–";
+  $("wMax").textContent=Q>0?(mDa*dW*3600).toFixed(1):"–";
+  $("evNote").innerHTML=`Theoretisch maximum bij <b>100% verzadiging</b> (adiabatische koeling langs constante natteboltemp.). De intredelucht koelt van ${Tc.toFixed(1)} °C naar ~${Twb.toFixed(1)} °C en wordt verzadigd; de opgenomen waterhoeveelheid = massadebiet droge lucht × Δvochtinhoud (${(dW*1000).toFixed(2)} g/kg). In de praktijk haal je een lagere verzadigingsgraad, dus reken dit als bovengrens.`;
+
+  const rows=[["Bovenring (intrede)","ring",+$("dRing").value],["Venturi (keel)","venturi",+$("dVenturi").value],["Opening onderzijde (uittrede)","onder",+$("dOnder").value]];
+  $("secBody").innerHTML=rows.map(([name,key,d])=>{
+    const dpExp=0.5*rho*vSec[key]*vSec[key];
+    const here=key===loc?' class="here"':'', tag=key===loc?' <span class="tag">meetpunt</span>':'';
+    return `<tr${here}><td>${name}${tag}</td><td>${d}</td><td>${A[key].toFixed(4)}</td><td>${Q>0?vSec[key].toFixed(3):"–"}</td><td>${Q>0?dpExp.toFixed(2):"–"}</td></tr>`;
+  }).join("");
+
+  $("rhoNote").innerHTML=`Dichtheid <b>ρ = ${rho.toFixed(4)} kg/m³</b> · droge lucht zou ${rhoDry.toFixed(4)} kg/m³ zijn (vochtcorrectie ${(100*(rho-rhoDry)/rhoDry).toFixed(2)} %). Verzadigingsdruk e<sub>s</sub> = ${es.toFixed(0)} Pa · dampdruk e = ${e.toFixed(0)} Pa · dauwpunt ${dew.toFixed(1)} °C. `+(isPitot?`Omrekening: v = √(2·Δp / ρ).`:`Snelheid wordt direct gemeten; ρ alleen voor de "Δp verwacht"-kolom en eventueel massadebiet.`);
+
+  const w=$("lowWarn");
+  if(isPitot&&nPts&&dpMean>0&&dpMean<2){ w.classList.add("show");
+    w.innerHTML=`Δp is klein (gem. ${dpMean.toFixed(1)} Pa → ~${vMeet.toFixed(2)} m/s). Onder ±2 Pa wordt een gewone Pitotbuis onnauwkeurig. Overweeg een micromanometer (0,1 Pa) of een vleugelrad-/hittedraad-anemometer ter controle.`;
+  } else { w.classList.remove("show"); }
+
+  drawTower(+$("dRing").value,+$("dVenturi").value,+$("dOnder").value,loc,vSec,Q);
+  save();
+}
+
+function drawTower(dRing,dVent,dOnder,loc,vSec,Q){
+  const cx=150,maxHalf=110,minHalf=9,dMax=Math.max(dRing,dVent,dOnder,1);
+  const half=d=>Math.max(minHalf,(d/dMax)*maxHalf);
+  const yTop=42,yMid=205,yBot=372, hR=half(dRing),hV=half(dVent),hO=half(dOnder);
+  $("towerL").setAttribute("points",`${cx-hR},${yTop} ${cx-hV},${yMid} ${cx-hO},${yBot} ${cx-hO+6},${yBot} ${cx-hV+6},${yMid} ${cx-hR+6},${yTop}`);
+  $("towerR").setAttribute("points",`${cx+hR},${yTop} ${cx+hV},${yMid} ${cx+hO},${yBot} ${cx+hO-6},${yBot} ${cx+hV-6},${yMid} ${cx+hR-6},${yTop}`);
+  const fg=$("flowGroup"); fg.innerHTML="";
+  [-0.5,0,0.5].forEach(f=>{ const x=cx+f*Math.min(hV*0.8,26);
+    fg.innerHTML+=`<line class="flowline" x1="${x}" y1="${yTop+6}" x2="${x}" y2="${yBot-6}"/>`; });
+  fg.innerHTML+=`<path d="M${cx-6},${yBot-2} L${cx},${yBot+8} L${cx+6},${yBot-2}" fill="none" stroke="var(--flow)" stroke-width="2"/>`;
+  const lab=$("labels"), on=k=>k===loc?'#22d3ee':'#9db0c8', vtxt=k=>Q>0?vSec[k].toFixed(2)+" m/s":"– m/s";
+  lab.innerHTML=
+    `<text x="${cx+hR+10}" y="${yTop+4}" fill="${on('ring')}">Ø${dRing}</text>`+
+    `<text x="${cx+hR+10}" y="${yTop+18}" fill="${on('ring')}">${vtxt('ring')}</text>`+
+    `<text x="${cx+hV+10}" y="${yMid+4}" fill="${on('venturi')}">Ø${dVent}</text>`+
+    `<text x="${cx+hV+10}" y="${yMid+18}" fill="${on('venturi')}">${vtxt('venturi')}</text>`+
+    `<text x="${cx+hO+10}" y="${yBot+2}" fill="${on('onder')}">Ø${dOnder}</text>`+
+    `<text x="${cx+hO+10}" y="${yBot+16}" fill="${on('onder')}">${vtxt('onder')}</text>`+
+    `<text x="10" y="${yTop-14}" fill="#5f7188">in ▼</text>`+
+    `<text x="10" y="${yBot+26}" fill="#5f7188">uit ▼</text>`;
+}
+
+["dRing","dVenturi","dOnder"].forEach(id=>$(id).addEventListener("input",()=>{ buildGrid(); compute(); }));
+$("meetLoc").addEventListener("change",()=>{ buildGrid(); compute(); });
+$("rings").addEventListener("change",()=>{ buildGrid(); compute(); });
+$("inst").addEventListener("change",()=>{ setUnitLabels(); compute(); });
+$("dpUnit").addEventListener("change",()=>{ setUnitLabels(); compute(); });
+$("probeType").addEventListener("change",()=>{ updateProbe(); compute(); });
+$("cp").addEventListener("input",compute);
+["temp","rv","baro","dp","k"].forEach(id=>$(id).addEventListener("input",compute));
+
+load();
+updateProbe();
+setUnitLabels();
+setMode(mode);
+compute();
+</script>
+</body>
+</html>
