@@ -91,6 +91,11 @@
   .tvstat{font-family:var(--mono);font-size:13px;color:var(--accent-ink)}
   .tvstat b{font-weight:700}
   .prof{margin-top:14px} .prof svg{display:block;width:100%;height:auto;max-width:360px}
+  .heatwrap{display:grid;grid-template-columns:340px 1fr;gap:20px;align-items:start;margin-top:20px;border-top:1px solid var(--line-soft);padding-top:18px}
+  @media (max-width:640px){.heatwrap{grid-template-columns:1fr}}
+  .heatbox canvas{display:block;width:100%;max-width:340px;height:auto;background:#0b1220;border-radius:10px}
+  .heatbar{display:flex;align-items:center;gap:8px;margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--muted);max-width:340px}
+  .heatbar .bar{flex:1;height:10px;border-radius:5px;background:linear-gradient(90deg,rgb(29,158,117),rgb(239,159,39),rgb(226,75,74))}
   footer{margin-top:8px;color:var(--muted);font-size:11px;font-family:var(--mono);text-align:right}
 </style>
 </head>
@@ -211,6 +216,19 @@
               <div class="note" style="margin-top:10px"><b>Insteekdiepte</b> = afstand van de binnenwand tot de tip, horizontaal langs de diameter — alle punten op dezelfde hoogte (één meetvlak), met twee toegangsgaatjes 90° uit elkaar (diameter A en B). Vul de gemeten Δp per punt in; leeg = overslaan. De snelheden worden per punt berekend en gemiddeld (equal-area = oppervlakte-gemiddelde).<br><br><b>Richting:</b> opening tegen de stroom in — bij neerwaartse stroming dus <b>naar boven</b>. <b>Aansluiting:</b> totaaldruk (tip) → <b>+</b>, statische druk (wandaftakking of statische gaatjes) → <b>−</b>; Δp moet positief zijn.</div>
             </div>
           </div>
+          <div class="heatwrap">
+            <div class="heatbox">
+              <canvas id="heatCanvas" width="300" height="300"></canvas>
+              <div class="heatbar"><span id="heatMin">–</span><div class="bar"></div><span id="heatMax">–</span> m/s</div>
+            </div>
+            <div class="heatinfo">
+              <div class="tvstat" style="margin-bottom:10px">Verdeling luchtstroom over de doorsnede</div>
+              <div class="kv"><span class="k">Zwaartepunt luchtstroom (straal)</span><span class="v"><span id="rFlow">–</span> mm</span></div>
+              <div class="kv"><span class="k">→ richt-diameter nozzles</span><span class="v"><span id="dFlow">–</span> mm</span></div>
+              <div class="kv"><span class="k">Pieksnelheid bij straal</span><span class="v"><span id="rPeak">–</span> mm</span></div>
+              <div class="note" id="heatNote" style="margin-top:12px"></div>
+            </div>
+          </div>
         </div>
 
         <div class="warnbox" id="lowWarn"></div>
@@ -246,6 +264,29 @@
         </div>
         <div class="note" id="evNote"></div>
       </div>
+
+      <div class="card">
+        <h2><span class="idx">6</span> Accutrol-bol — kalibratie &amp; correctie</h2>
+        <div class="grid2">
+          <div class="field"><label for="acc">Accutrol-uitlezing</label>
+            <input id="acc" type="text" inputmode="decimal" value="593"></div>
+          <div class="field"><label for="accUnit">Eenheid</label>
+            <select id="accUnit"><option value="cfm" selected>CFM</option><option value="mh">m³/h</option></select></div>
+        </div>
+        <div class="grid2" style="margin-top:6px;align-items:end">
+          <div class="field"><label for="kacc">k voor dagelijks gebruik</label>
+            <div class="inputrow"><input id="kacc" type="number" step="0.01" value="1.00"><span class="unit">×</span></div></div>
+          <div class="field"><button id="takeK" class="seg" style="padding:9px 12px;border-radius:8px;cursor:pointer" onclick="takeK()">← neem k uit huidige traverse</button></div>
+        </div>
+        <div class="result" style="margin-top:14px">
+          <div class="big"><span class="label">Gecorrigeerd debiet</span><span class="num"><span id="accQcorr">–</span><small>m³/h</small></span></div>
+          <div class="kv"><span class="k">Accutrol omgerekend</span><span class="v"><span id="accMh">–</span> m³/h · <span id="accMs">–</span> m³/s</span></div>
+          <div class="kv"><span class="k">k uit huidige traverse (Q ÷ Accutrol)</span><span class="v"><span id="accKcalc">–</span></span></div>
+          <div class="kv"><span class="k">Impliciete centrumsnelheid inlaat</span><span class="v"><span id="accVc">–</span> m/s · <span id="accFpm">–</span> fpm</span></div>
+        </div>
+        <div class="warnbox" id="accWarn"></div>
+        <div class="note">Referentie: doe een equal-area traverse in de <b>venturi</b> (kaart 3, meetlocatie = venturi). Kaart 4 geeft dan het betrouwbare debiet Q. "k uit huidige traverse" = Q ÷ Accutrol-uitlezing; klik op de knop om die over te nemen in "k voor dagelijks gebruik". Daarna geldt: gecorrigeerd debiet = k × Accutrol. De impliciete centrumsnelheid gebruikt het bovenring-oppervlak (zet Ø bovenring op je werkelijke inlaat).</div>
+      </div>
     </div>
 
     <aside>
@@ -267,7 +308,7 @@
       </div>
     </aside>
   </div>
-  <footer>Toren-debiet · lokaal, geen dataverzending · v3</footer>
+  <footer>Toren-debiet · lokaal, geen dataverzending · v5</footer>
 </div>
 
 <script>
@@ -276,6 +317,7 @@ const $ = id => document.getElementById(id);
 const Rd=287.058, Rv=461.495;
 let mode="single";
 let gridPoints=[];
+let lastKcalc=null;
 
 function eSat(Tc){ return 611.2*Math.exp(17.62*Tc/(243.12+Tc)); }
 function dewPoint(Tc,rv){ const g=Math.log(Math.max(rv,0.01)/100)+17.62*Tc/(243.12+Tc); return 243.12*g/(17.62-g); }
@@ -297,13 +339,14 @@ function parseList(str){ return String(str).split(/[,;\s]+/).map(s=>parseFloat(s
 function num(v){ const x=parseFloat(String(v).replace(',','.')); return isNaN(x)?null:x; }
 function sectionD(){ return {ring:+$("dRing").value, venturi:+$("dVenturi").value, onder:+$("dOnder").value}[$("meetLoc").value]; }
 
-function vColor(t){
+function vRGB(t){
   t=Math.max(0,Math.min(1,t));
   let c1,c2,f;
   if(t<0.5){c1=[29,158,117];c2=[239,159,39];f=t/0.5;}
   else{c1=[239,159,39];c2=[226,75,74];f=(t-0.5)/0.5;}
-  return `rgb(${Math.round(c1[0]+(c2[0]-c1[0])*f)},${Math.round(c1[1]+(c2[1]-c1[1])*f)},${Math.round(c1[2]+(c2[2]-c1[2])*f)})`;
+  return [Math.round(c1[0]+(c2[0]-c1[0])*f),Math.round(c1[1]+(c2[1]-c1[1])*f),Math.round(c1[2]+(c2[2]-c1[2])*f)];
 }
+function vColor(t){ const c=vRGB(t); return `rgb(${c[0]},${c[1]},${c[2]})`; }
 
 /* ---- traverse grid ---- */
 function buildGrid(){
@@ -327,8 +370,8 @@ function buildGrid(){
 
   gridPoints=[];
   rs.forEach((rSigned,idx)=>{
-    gridPoints.push({ptId:"ptA"+idx,inId:"dpA"+idx,rmm:Math.abs(rSigned)});
-    gridPoints.push({ptId:"ptB"+idx,inId:"dpB"+idx,rmm:Math.abs(rSigned)});
+    gridPoints.push({ptId:"ptA"+idx,inId:"dpA"+idx,rmm:Math.abs(rSigned),xr:rSigned,yr:0});
+    gridPoints.push({ptId:"ptB"+idx,inId:"dpB"+idx,rmm:Math.abs(rSigned),xr:0,yr:rSigned});
   });
   document.querySelectorAll(".tp").forEach(i=>i.addEventListener("input",compute));
 }
@@ -370,24 +413,57 @@ function drawProfile(pts,R){
   $("profSvg").innerHTML=s;
 }
 
+function drawHeatmap(pts,R,vmin,vmax,rFlow,rPeak){
+  const cv=$("heatCanvas"); if(!cv) return;
+  const ctx=cv.getContext("2d"); if(!ctx) return;
+  const D=cv.width;   // vierkant, bv. 300
+  ctx.clearRect(0,0,D,D);
+  if(pts.length<3){ ctx.font="12px sans-serif"; ctx.fillStyle="#94a3b8"; ctx.textAlign="center";
+    ctx.fillText("Vul \u22653 punten in voor de verdeling", D/2, D/2); return; }
+  // heatmap op klein offscreen canvas, daarna glad opschalen
+  const N=120, off=document.createElement("canvas"); off.width=off.height=N;
+  const octx=off.getContext("2d"), img=octx.createImageData(N,N), data=img.data;
+  const cen=(N-1)/2, sc=R/(N/2);
+  for(let j=0;j<N;j++)for(let i=0;i<N;i++){
+    const xmm=(i-cen)*sc, ymm=(j-cen)*sc, rr=Math.hypot(xmm,ymm), idx=(j*N+i)*4;
+    if(rr>R){ data[idx+3]=0; continue; }
+    let numv=0,den=0,exact=null;
+    for(const p of pts){ const d=Math.hypot(xmm-p.xr,ymm-p.yr); if(d<1e-6){exact=p.v;break;} const wg=1/(d*d); numv+=wg*p.v; den+=wg; }
+    const v=exact!==null?exact:numv/den, t=vmax>vmin?(v-vmin)/(vmax-vmin):0.5, c=vRGB(t);
+    data[idx]=c[0]; data[idx+1]=c[1]; data[idx+2]=c[2]; data[idx+3]=255;
+  }
+  octx.putImageData(img,0,0);
+  ctx.imageSmoothingEnabled=true; ctx.drawImage(off,0,0,D,D);
+  // overlay
+  const C=D/2, s=(D/2)/R, mm=v=>v*s;
+  ctx.strokeStyle="#334155"; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(C,C,mm(R)-1,0,7); ctx.stroke();
+  ctx.strokeStyle="rgba(51,65,85,.35)"; ctx.lineWidth=0.8;
+  ctx.beginPath(); ctx.moveTo(C-mm(R),C); ctx.lineTo(C+mm(R),C); ctx.moveTo(C,C-mm(R)); ctx.lineTo(C,C+mm(R)); ctx.stroke();
+  // meetpunten
+  pts.forEach(p=>{ ctx.beginPath(); ctx.arc(C+mm(p.xr),C+mm(p.yr),3.2,0,7); ctx.fillStyle=p.col; ctx.fill(); ctx.lineWidth=1; ctx.strokeStyle="#fff"; ctx.stroke(); });
+  // zwaartepunt luchtstroom (richt-hier straal)
+  if(rFlow>0){ ctx.setLineDash([6,4]); ctx.strokeStyle="#0b1220"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(C,C,mm(rFlow),0,7); ctx.stroke(); ctx.setLineDash([]); }
+}
+
 /* ---- storage ---- */
-const STORE="torenDebiet_v2";
+const STORE="torenDebiet_v3";
 function save(){ try{
   const o={mode,rings:$("rings").value};
-  ["dRing","dVenturi","dOnder","meetLoc","temp","rv","baro","dp","k","dpUnit","inst","probeType","cp"].forEach(id=>o[id]=$(id).value);
+  ["dRing","dVenturi","dOnder","meetLoc","temp","rv","baro","dp","k","dpUnit","inst","probeType","cp","acc","accUnit","kacc"].forEach(id=>o[id]=$(id).value);
   const tv={}; document.querySelectorAll(".tp").forEach(i=>{ if(i.value) tv[i.id]=i.value; });
   o.tv=tv; localStorage.setItem(STORE,JSON.stringify(o));
 }catch(e){} }
 function load(){ try{
   const o=JSON.parse(localStorage.getItem(STORE)||"{}");
-  ["dRing","dVenturi","dOnder","meetLoc","temp","rv","baro","dp","k","rings","dpUnit","inst","probeType","cp"].forEach(id=>{ if(o[id]!==undefined&&$(id)) $(id).value=o[id]; });
+  ["dRing","dVenturi","dOnder","meetLoc","temp","rv","baro","dp","k","rings","dpUnit","inst","probeType","cp","acc","accUnit","kacc"].forEach(id=>{ if(o[id]!==undefined&&o[id]!==""&&$(id)) $(id).value=o[id]; });
   if(o.mode) mode=o.mode;
   buildGrid();
   if(o.tv) Object.keys(o.tv).forEach(id=>{ if($(id)) $(id).value=o.tv[id]; });
 }catch(e){ buildGrid(); } }
 
-function updateProbe(){
-  const pt=$("probeType").value;
+function takeK(){ if(lastKcalc!==null){ $("kacc").value=lastKcalc.toFixed(3); compute(); } }
+function updateProbe(){  const pt=$("probeType").value;
   if(pt==="manual"){ $("cp").disabled=false; }
   else { $("cp").value=pt; $("cp").disabled=true; }
 }
@@ -444,6 +520,21 @@ function compute(){
       pts.forEach(p=>{ p.col=vColor(vmax>vmin?(p.v-vmin)/(vmax-vmin):0.5); const el=$(p.ptId); if(el) el.setAttribute("fill",p.col); });
       vMeet=vs.reduce((a,b)=>a+b,0)/vs.length; vGem=vMeet; nPts=pts.length;
       dpMean=pts.reduce((a,b)=>a+b.dp,0)/pts.length;
+      // ring-gemiddelde v per straal → zwaartepunt en piek
+      const byR={}; pts.forEach(p=>{ const key=p.rmm.toFixed(1); (byR[key]=byR[key]||[]).push(p.v); });
+      const rings=Object.keys(byR).map(k=>({r:+k, v:byR[k].reduce((a,b)=>a+b,0)/byR[k].length}));
+      let sw=0,swr=0,peak=rings[0];
+      rings.forEach(g=>{ sw+=g.v; swr+=g.v*g.r; if(g.v>peak.v) peak=g; });
+      const rFlow=sw>0?swr/sw:0, rPeak=peak?peak.r:0, Rsec=sectionD()/2;
+      drawHeatmap(pts,Rsec,vmin,vmax,rFlow,rPeak);
+      $("heatMin").textContent=vmin.toFixed(2); $("heatMax").textContent=vmax.toFixed(2);
+      $("rFlow").textContent=rFlow.toFixed(0); $("dFlow").textContent=(2*rFlow).toFixed(0);
+      $("rPeak").textContent=rPeak.toFixed(0);
+      $("heatNote").innerHTML=`De stippellijn markeert het <b>zwaartepunt van de luchtstroom</b> op straal ≈ ${rFlow.toFixed(0)} mm (Ø ≈ ${(2*rFlow).toFixed(0)} mm): daar is de lucht-massaflux het hoogst. Richt de <b>worp van de nozzles</b> zo dat de druppels vooral deze zone bereiken — daar is het verdampingscontact het best. Interpolatie tussen de meetpunten (afstandsgewogen); meer punten = betrouwbaardere verdeling.`;
+    } else {
+      drawHeatmap([],sectionD()/2,0,1,0,0);
+      ["heatMin","heatMax","rFlow","dFlow","rPeak"].forEach(id=>$(id).textContent="–");
+      $("heatNote").textContent="";
     }
     drawProfile(pts,sectionD()/2);
     $("tvVavg").textContent=nPts?vMeet.toFixed(3):"–";
@@ -481,6 +572,25 @@ function compute(){
   $("mDa").textContent=Q>0?(mDa*3600).toFixed(0):"–";
   $("wMax").textContent=Q>0?(mDa*dW*3600).toFixed(1):"–";
   $("evNote").innerHTML=`Theoretisch maximum bij <b>100% verzadiging</b> (adiabatische koeling langs constante natteboltemp.). De intredelucht koelt van ${Tc.toFixed(1)} °C naar ~${Twb.toFixed(1)} °C en wordt verzadigd; de opgenomen waterhoeveelheid = massadebiet droge lucht × Δvochtinhoud (${(dW*1000).toFixed(2)} g/kg). In de praktijk haal je een lagere verzadigingsgraad, dus reken dit als bovengrens.`;
+
+  // ---- Accutrol-bol kalibratie & correctie ----
+  const accRaw=num($("acc").value)||0;
+  const accM3s=$("accUnit").value==="cfm"?accRaw*0.000471947:accRaw/3600;
+  const accMh=accM3s*3600;
+  const kacc=parseFloat($("kacc").value)||0;
+  const kcalc=(Q>0&&accM3s>0)?Q/accM3s:null;
+  lastKcalc=kcalc;
+  const vC=accM3s>0?accM3s/A.ring:0;   // impliciete centrumsnelheid over bovenring
+  $("accMh").textContent=accM3s>0?accMh.toFixed(0):"–";
+  $("accMs").textContent=accM3s>0?accM3s.toFixed(3):"–";
+  $("accKcalc").textContent=kcalc!==null?kcalc.toFixed(3):"–";
+  $("accQcorr").textContent=accM3s>0?(kacc*accMh).toFixed(0):"–";
+  $("accVc").textContent=vC>0?vC.toFixed(3):"–";
+  $("accFpm").textContent=vC>0?(vC*196.85).toFixed(0):"–";
+  const aw=$("accWarn");
+  if(vC>0&&vC<0.381){ aw.classList.add("show");
+    aw.innerHTML=`Impliciete centrumsnelheid ${(vC*196.85).toFixed(0)} fpm ligt onder de 75 fpm-ondergrens van de 0,1″-transducer. De bol-uitlezing valt dan buiten spec; kalibratie herschaalt wel, maar maakt het ruizige signaal niet nauwkeuriger. Meet liever in de venturi.`;
+  } else aw.classList.remove("show");
 
   const rows=[["Bovenring (intrede)","ring",+$("dRing").value],["Venturi (keel)","venturi",+$("dVenturi").value],["Opening onderzijde (uittrede)","onder",+$("dOnder").value]];
   $("secBody").innerHTML=rows.map(([name,key,d])=>{
@@ -529,7 +639,8 @@ $("inst").addEventListener("change",()=>{ setUnitLabels(); compute(); });
 $("dpUnit").addEventListener("change",()=>{ setUnitLabels(); compute(); });
 $("probeType").addEventListener("change",()=>{ updateProbe(); compute(); });
 $("cp").addEventListener("input",compute);
-["temp","rv","baro","dp","k"].forEach(id=>$(id).addEventListener("input",compute));
+["temp","rv","baro","dp","k","acc","kacc"].forEach(id=>$(id).addEventListener("input",compute));
+$("accUnit").addEventListener("change",compute);
 
 load();
 updateProbe();
