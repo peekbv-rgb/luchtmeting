@@ -145,7 +145,7 @@
         </div>
 
         <div id="livePanel" style="display:none;margin-top:16px;border-top:1px solid var(--line-soft);padding-top:14px">
-          <div class="grid3">
+          <div id="teCredFields" class="grid3">
             <div class="field" style="grid-column:1/-1"><label for="teUrl">ThingsEye URL</label>
               <input id="teUrl" type="text" placeholder="https://app.thingseye.io"></div>
             <div class="field"><label for="teUser">Gebruiker (e-mail)</label>
@@ -158,14 +158,17 @@
               <input id="teKeyT" type="text" value="temperature"></div>
             <div class="field"><label for="teKeyH">Sleutel RV</label>
               <input id="teKeyH" type="text" value="humidity"></div>
+          </div>
+          <div class="grid3" style="margin-top:14px">
             <div class="field"><label for="teInterval">Auto-ververs (s)</label>
               <div class="inputrow"><input id="teInterval" type="number" step="5" min="10" value="60"><span class="unit">s</span></div></div>
           </div>
+          <div id="teProxyNote" class="note" style="display:none">Proxy-modus: temperatuur, RV en luchtdruk komen via je eigen server (/api/te). De inloggegevens staan veilig op de server (env-variabelen) — je hoeft hier niets in te vullen.</div>
           <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:12px">
             <button id="teFetchBtn" class="seg" style="padding:9px 14px;border-radius:8px;cursor:pointer;background:var(--accent);color:#fff;border:none" onclick="teFetch()">Verbind &amp; haal op</button>
             <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px"><input id="teProxy" type="checkbox" style="width:auto"> via proxy (/api/te)</label>
             <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px"><input id="teAuto" type="checkbox" style="width:auto"> auto-verversen</label>
-            <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px"><input id="teRemember" type="checkbox" style="width:auto"> wachtwoord onthouden</label>
+            <label id="teRememberLbl" style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px"><input id="teRemember" type="checkbox" style="width:auto"> wachtwoord onthouden</label>
             <span id="teStatus" style="font-family:var(--mono);font-size:12px;color:var(--muted)"></span>
           </div>
           <div class="note" style="margin-top:12px">Werkt als ThingsEye <b>CORS</b> toestaat voor deze site; anders is een klein proxy-servicetje nodig. Dit is een statische pagina: gegevens blijven in je browser. Wachtwoord onthouden is optioneel en slaat het (onversleuteld) lokaal op — laat uit op gedeelde apparaten. De token blijft alleen in het geheugen.</div>
@@ -339,7 +342,7 @@
       </div>
     </aside>
   </div>
-  <footer>Toren-debiet · lokaal, geen dataverzending · v9</footer>
+  <footer>Toren-debiet · lokaal, geen dataverzending · v10</footer>
 </div>
 
 <script>
@@ -563,12 +566,19 @@ function teAutoSetup(){
   if(teTimer){ clearInterval(teTimer); teTimer=null; }
   if(condMode==="live" && $("teAuto").checked){ const s=Math.max(10,+$("teInterval").value||60); teTimer=setInterval(teFetch,s*1000); }
 }
+function updateLiveFields(){
+  const proxy=$("teProxy").checked;
+  $("teCredFields").style.display=proxy?"none":"";
+  $("teProxyNote").style.display=proxy?"":"none";
+  const rl=document.getElementById("teRememberLbl"); if(rl) rl.style.display=proxy?"none":"";
+}
 function setCondMode(m){
   condMode=m;
   $("btnManual").classList.toggle("active",m==="manual");
   $("btnLive").classList.toggle("active",m==="live");
   $("livePanel").style.display=m==="live"?"":"none";
   if(m!=="live"){ $("liveBadgeT").style.display="none"; $("liveBadgeH").style.display="none"; $("liveBadgeB").style.display="none"; }
+  updateLiveFields();
   teAutoSetup(); save();
   if(m==="live") teFetch();   // meteen ophalen, niet wachten op de timer
 }
@@ -752,7 +762,8 @@ $("cp").addEventListener("input",compute);
 ["temp","rv","baro","dp","k","acc","kacc"].forEach(id=>$(id).addEventListener("input",compute));
 $("accUnit").addEventListener("change",compute);
 ["teAuto","teInterval"].forEach(id=>$(id).addEventListener("change",teAutoSetup));
-["teUrl","teUser","teDevice","teKeyT","teKeyH","teRemember","teProxy"].forEach(id=>$(id).addEventListener("change",save));
+["teUrl","teUser","teDevice","teKeyT","teKeyH","teRemember"].forEach(id=>$(id).addEventListener("change",save));
+$("teProxy").addEventListener("change",()=>{ updateLiveFields(); save(); if(condMode==="live") teFetch(); });
 
 load();
 updateProbe();
