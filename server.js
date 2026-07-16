@@ -8,13 +8,30 @@ const {
   TE_URL, TE_USER, TE_PASS, TE_DEVICE,
   TE_KEY_T = "temperature",
   TE_KEY_H = "humidity",
+  TE_LAT = "51.6606",
+  TE_LON = "5.6172",
 } = process.env;
 
 let token = null;
 let cache = { at: 0, data: null };
 const CACHE_MS = 15000; // hooguit elke 15 s echt ophalen
+let baroCache = { at: 0, val: null };
+const BARO_MS = 600000; // luchtdruk elke 10 min verversen
 
 function base() { return (TE_URL || "").replace(/\/+$/, ""); }
+
+async function pressure() {
+  const now = Date.now();
+  if (baroCache.val != null && now - baroCache.at < BARO_MS) return baroCache.val;
+  const url = "https://api.open-meteo.com/v1/forecast?latitude=" + TE_LAT +
+    "&longitude=" + TE_LON + "&current=surface_pressure";
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("openmeteo " + r.status);
+  const j = await r.json();
+  const p = j.current && j.current.surface_pressure;
+  if (p != null) baroCache = { at: now, val: p };
+  return p != null ? p : null;
+}
 
 async function login() {
   const r = await fetch(base() + "/api/auth/login", {
@@ -54,9 +71,12 @@ app.get("/api/te", async (req, res) => {
     if (req.query.debug) return res.json({ raw: d, keys: { T: TE_KEY_T, H: TE_KEY_H } });
     const t = d[TE_KEY_T] && d[TE_KEY_T][0];
     const h = d[TE_KEY_H] && d[TE_KEY_H][0];
+    let baro = null;
+    try { baro = await pressure(); } catch (e) { /* laat baro null; breekt T/RV niet */ }
     const out = {
       temp: t ? toNum(t.value) : null,
       rv: h ? toNum(h.value) : null,
+      baro: baro,
       ts: (t && t.ts) || (h && h.ts) || null,
     };
     cache = { at: now, data: out };
