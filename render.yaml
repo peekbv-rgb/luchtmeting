@@ -21,3 +21,7 @@ services:
         value: temperature
       - key: TE_KEY_H
         value: humidity
+      - key: TE_LAT
+        value: "51.6606"        # torenlocatie breedtegraad (Uden)
+      - key: TE_LON
+        value: "5.6172"         # torenlocatie lengtegraad (Uden)
