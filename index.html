@@ -170,6 +170,7 @@
             <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px"><input id="teAuto" type="checkbox" style="width:auto"> auto-verversen</label>
             <label id="teRememberLbl" style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px"><input id="teRemember" type="checkbox" style="width:auto"> wachtwoord onthouden</label>
             <span id="teStatus" style="font-family:var(--mono);font-size:12px;color:var(--muted)"></span>
+            <span id="teAge" style="font-family:var(--mono);font-size:12px;color:var(--muted)"></span>
           </div>
           <div class="note" style="margin-top:12px">Werkt als ThingsEye <b>CORS</b> toestaat voor deze site; anders is een klein proxy-servicetje nodig. Dit is een statische pagina: gegevens blijven in je browser. Wachtwoord onthouden is optioneel en slaat het (onversleuteld) lokaal op — laat uit op gedeelde apparaten. De token blijft alleen in het geheugen.</div>
         </div>
@@ -342,7 +343,7 @@
       </div>
     </aside>
   </div>
-  <footer>Toren-debiet · lokaal, geen dataverzending · v10</footer>
+  <footer>Toren-debiet · lokaal, geen dataverzending · v11</footer>
 </div>
 
 <script>
@@ -354,6 +355,7 @@ let gridPoints=[];
 let lastKcalc=null;
 let condMode="manual";
 let teToken=null, teTimer=null;
+let teLastTs=null, teAgeTimer=null;
 
 function eSat(Tc){ return 611.2*Math.exp(17.62*Tc/(243.12+Tc)); }
 function dewPoint(Tc,rv){ const g=Math.log(Math.max(rv,0.01)/100)+17.62*Tc/(243.12+Tc); return 243.12*g/(17.62-g); }
@@ -518,6 +520,15 @@ async function teGet(base,token,dev,keys){
   if(!r.ok) throw new Error("telemetrie "+r.status);
   return r.json();
 }
+function renderAge(){
+  const el=$("teAge"); if(!el) return;
+  if(teLastTs==null){ el.textContent=""; return; }
+  const min=Math.floor((Date.now()-teLastTs)/60000);
+  let txt, col;
+  if(min<1){ txt="zojuist"; col="#0f9d58"; }
+  else { txt=min+" min geleden"; col = min>45?"var(--warn)":(min>20?"var(--amber)":"var(--muted)"); }
+  el.textContent="· meting "+txt; el.style.color=col;
+}
 async function teFetch(){
   const st=$("teStatus");
   if($("teProxy").checked){
@@ -530,6 +541,7 @@ async function teFetch(){
       if(j.rv!=null){ $("rv").value=(+j.rv).toFixed(0); $("liveBadgeH").style.display=""; }
       if(j.baro!=null){ $("baro").value=(+j.baro).toFixed(1); $("liveBadgeB").style.display=""; }
       compute(); save();
+      teLastTs=j.ts||null; renderAge();
       const when=j.ts?new Date(j.ts).toLocaleTimeString("nl-NL"):"—";
       st.textContent=((j.temp!=null)?(+j.temp).toFixed(1)+"°C ":"")+((j.rv!=null)?(+j.rv).toFixed(0)+"% ":"")+"· "+when;
       st.style.color="#0f9d58";
@@ -551,6 +563,7 @@ async function teFetch(){
     if(h){ $("rv").value=(+h.value).toFixed(0); ts=h.ts||ts; }
     $("liveBadgeT").style.display=t?"":"none"; $("liveBadgeH").style.display=h?"":"none";
     compute(); save();
+    teLastTs=ts||null; renderAge();
     const when=ts?new Date(ts).toLocaleTimeString("nl-NL"):"—";
     st.textContent=(t?(+t.value).toFixed(1)+"°C ":"")+(h?(+h.value).toFixed(0)+"% ":"")+"· "+when;
     st.style.color="#0f9d58";
@@ -578,6 +591,8 @@ function setCondMode(m){
   $("btnLive").classList.toggle("active",m==="live");
   $("livePanel").style.display=m==="live"?"":"none";
   if(m!=="live"){ $("liveBadgeT").style.display="none"; $("liveBadgeH").style.display="none"; $("liveBadgeB").style.display="none"; }
+  if(teAgeTimer){ clearInterval(teAgeTimer); teAgeTimer=null; }
+  if(m==="live"){ teAgeTimer=setInterval(renderAge,30000); } else { teLastTs=null; if($("teAge")) $("teAge").textContent=""; }
   updateLiveFields();
   teAutoSetup(); save();
   if(m==="live") teFetch();   // meteen ophalen, niet wachten op de timer
