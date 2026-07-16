@@ -1,17 +1,23 @@
-# Render Blueprint — statische site, geen build-stap.
-# Publiceren: Render dashboard -> New -> Blueprint -> koppel deze repo.
+# Render Blueprint — Node web service: serveert de app EN proxyt ThingsEye.
+# Publiceren: Render -> New -> Blueprint -> koppel deze repo -> Apply.
+# Zet daarna de sensor-secrets (TE_*) in het dashboard onder Environment.
 services:
   - type: web
     name: toren-luchtdebiet
-    runtime: static
-    buildCommand: echo "Geen build-stap; statische HTML."
-    staticPublishPath: .
-    pullRequestPreviewsEnabled: true
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    headers:
-      - path: /*
-        name: Cache-Control
-        value: no-cache
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: TE_URL
+        sync: false          # bv. https://app.thingseye.io
+      - key: TE_USER
+        sync: false          # ThingsEye e-mail
+      - key: TE_PASS
+        sync: false          # ThingsEye wachtwoord
+      - key: TE_DEVICE
+        sync: false          # device-ID (uuid)
+      - key: TE_KEY_T
+        value: temperature
+      - key: TE_KEY_H
+        value: humidity
