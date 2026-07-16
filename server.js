@@ -61,6 +61,14 @@ async function timeseries() {
   return r.json();
 }
 
+async function timeseriesAll() {
+  const url = base() + "/api/plugins/telemetry/DEVICE/" + TE_DEVICE + "/values/timeseries";
+  let r = await fetch(url, { headers: { "X-Authorization": "Bearer " + token } });
+  if (r.status === 401) { await login(); r = await fetch(url, { headers: { "X-Authorization": "Bearer " + token } }); }
+  if (!r.ok) throw new Error("telemetrie-all " + r.status);
+  return r.json();
+}
+
 // --- API-route staat vóór express.static ---
 function toNum(v){
   if (v === null || v === undefined) return null;
@@ -80,7 +88,10 @@ app.get("/api/te", async (req, res) => {
     const h = d[TE_KEY_H] && d[TE_KEY_H][0];
     let baro = null, baroErr = null;
     try { baro = await pressure(); } catch (e) { baroErr = String(e.message || e); console.error("baro:", baroErr); }
-    if (req.query.debug) return res.json({ raw: d, keys: { T: TE_KEY_T, H: TE_KEY_H }, baro, baroErr, lat: TE_LAT, lon: TE_LON });
+    if (req.query.debug) {
+      let all = null; try { all = await timeseriesAll(); } catch (e) { all = { error: String(e.message||e) }; }
+      return res.json({ gekozen: { T: TE_KEY_T, H: TE_KEY_H }, raw: d, alle_sleutels: all });
+    }
     const out = {
       temp: t ? toNum(t.value) : null,
       rv: h ? toNum(h.value) : null,
