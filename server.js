@@ -16,21 +16,29 @@ let token = null;
 let cache = { at: 0, data: null };
 const CACHE_MS = 15000; // hooguit elke 15 s echt ophalen
 let baroCache = { at: 0, val: null };
-const BARO_MS = 600000; // luchtdruk elke 10 min verversen
+const BARO_MS = 900000;      // luchtdruk elke 15 min verversen
+const BARO_RETRY_MS = 180000; // na een fout minstens 3 min wachten
+let baroNextTry = 0;
 
 function base() { return (TE_URL || "").replace(/\/+$/, ""); }
 
 async function pressure() {
   const now = Date.now();
   if (baroCache.val != null && now - baroCache.at < BARO_MS) return baroCache.val;
-  const url = "https://api.open-meteo.com/v1/forecast?latitude=" + TE_LAT +
-    "&longitude=" + TE_LON + "&current=surface_pressure";
-  const r = await fetch(url);
-  if (!r.ok) throw new Error("openmeteo " + r.status);
-  const j = await r.json();
-  const p = j.current && j.current.surface_pressure;
-  if (p != null) baroCache = { at: now, val: p };
-  return p != null ? p : null;
+  if (now < baroNextTry) return baroCache.val;   // backoff: gebruik laatst bekende (of null)
+  try {
+    const url = "https://api.open-meteo.com/v1/forecast?latitude=" + TE_LAT +
+      "&longitude=" + TE_LON + "&current=surface_pressure";
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("openmeteo " + r.status);
+    const j = await r.json();
+    const p = j.current && j.current.surface_pressure;
+    if (p != null) { baroCache = { at: now, val: p }; return p; }
+    throw new Error("openmeteo geen waarde");
+  } catch (e) {
+    baroNextTry = now + BARO_RETRY_MS;   // niet blijven hameren
+    throw e;
+  }
 }
 
 async function login() {
