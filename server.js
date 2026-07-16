@@ -68,11 +68,11 @@ app.get("/api/te", async (req, res) => {
     if (!req.query.debug && cache.data && now - cache.at < CACHE_MS) return res.json(cache.data);
     if (!token) await login();
     const d = await timeseries();
-    if (req.query.debug) return res.json({ raw: d, keys: { T: TE_KEY_T, H: TE_KEY_H } });
     const t = d[TE_KEY_T] && d[TE_KEY_T][0];
     const h = d[TE_KEY_H] && d[TE_KEY_H][0];
-    let baro = null;
-    try { baro = await pressure(); } catch (e) { /* laat baro null; breekt T/RV niet */ }
+    let baro = null, baroErr = null;
+    try { baro = await pressure(); } catch (e) { baroErr = String(e.message || e); console.error("baro:", baroErr); }
+    if (req.query.debug) return res.json({ raw: d, keys: { T: TE_KEY_T, H: TE_KEY_H }, baro, baroErr, lat: TE_LAT, lon: TE_LON });
     const out = {
       temp: t ? toNum(t.value) : null,
       rv: h ? toNum(h.value) : null,
