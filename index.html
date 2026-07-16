@@ -139,7 +139,7 @@
           <div class="field"><label for="temp">Luchttemperatuur <span id="liveBadgeT" class="tag" style="display:none">live</span></label>
             <div class="inputrow"><input id="temp" type="number" step="0.1" value="20"><span class="unit">°C</span></div></div>
           <div class="field"><label for="rv">Relatieve vochtigheid <span id="liveBadgeH" class="tag" style="display:none">live</span></label>
-            <div class="inputrow"><input id="rv" type="number" step="1" min="0" max="100" value="60"><span class="unit">%</span></div></div>
+            <div class="inputrow"><input id="rv" type="number" step="0.1" min="0" max="100" value="60"><span class="unit">%</span></div></div>
           <div class="field"><label for="baro">Barometerdruk <span id="liveBadgeB" class="tag" style="display:none">live</span></label>
             <div class="inputrow"><input id="baro" type="number" step="0.1" value="1013.25"><span class="unit">hPa</span></div></div>
         </div>
@@ -343,7 +343,7 @@
       </div>
     </aside>
   </div>
-  <footer>Toren-debiet · lokaal, geen dataverzending · v11</footer>
+  <footer>Toren-debiet · lokaal, geen dataverzending · v12</footer>
 </div>
 
 <script>
@@ -538,12 +538,12 @@ async function teFetch(){
       if(!r.ok) throw new Error("proxy "+r.status);
       const j=await r.json();
       if(j.temp!=null){ $("temp").value=(+j.temp).toFixed(1); $("liveBadgeT").style.display=""; }
-      if(j.rv!=null){ $("rv").value=(+j.rv).toFixed(0); $("liveBadgeH").style.display=""; }
+      if(j.rv!=null){ $("rv").value=(+j.rv).toFixed(1); $("liveBadgeH").style.display=""; }
       if(j.baro!=null){ $("baro").value=(+j.baro).toFixed(1); $("liveBadgeB").style.display=""; }
       compute(); save();
       teLastTs=j.ts||null; renderAge();
       const when=j.ts?new Date(j.ts).toLocaleTimeString("nl-NL"):"—";
-      st.textContent=((j.temp!=null)?(+j.temp).toFixed(1)+"°C ":"")+((j.rv!=null)?(+j.rv).toFixed(0)+"% ":"")+"· "+when;
+      st.textContent=((j.temp!=null)?(+j.temp).toFixed(1)+"°C ":"")+((j.rv!=null)?(+j.rv).toFixed(1)+"% ":"")+"· "+when;
       st.style.color="#0f9d58";
     }catch(err){ st.textContent=(err instanceof TypeError)?"Geen verbinding met /api/te (draait de proxy?).":"Fout: "+err.message; st.style.color="var(--warn)"; }
     return;
@@ -560,12 +560,12 @@ async function teFetch(){
     catch(e){ if(String(e.message)==="401"){ teToken=await teLogin(base,user,pass); data=await teGet(base,teToken,dev,keys); } else throw e; }
     const t=data[kT]&&data[kT][0], h=data[kH]&&data[kH][0]; let ts=null;
     if(t){ $("temp").value=(+t.value).toFixed(1); ts=t.ts; }
-    if(h){ $("rv").value=(+h.value).toFixed(0); ts=h.ts||ts; }
+    if(h){ $("rv").value=(+h.value).toFixed(1); ts=h.ts||ts; }
     $("liveBadgeT").style.display=t?"":"none"; $("liveBadgeH").style.display=h?"":"none";
     compute(); save();
     teLastTs=ts||null; renderAge();
     const when=ts?new Date(ts).toLocaleTimeString("nl-NL"):"—";
-    st.textContent=(t?(+t.value).toFixed(1)+"°C ":"")+(h?(+h.value).toFixed(0)+"% ":"")+"· "+when;
+    st.textContent=(t?(+t.value).toFixed(1)+"°C ":"")+(h?(+h.value).toFixed(1)+"% ":"")+"· "+when;
     st.style.color="#0f9d58";
   }catch(err){
     teToken=null;
