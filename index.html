@@ -322,6 +322,25 @@
         <div class="warnbox" id="accWarn"></div>
         <div class="note">Referentie: doe een equal-area traverse in de <b>venturi</b> (kaart 3, meetlocatie = venturi). Kaart 4 geeft dan het betrouwbare debiet Q. "k uit huidige traverse" = Q ÷ Accutrol-uitlezing; klik op de knop om die over te nemen in "k voor dagelijks gebruik". Daarna geldt: gecorrigeerd debiet = k × Accutrol. De impliciete centrumsnelheid gebruikt het bovenring-oppervlak (zet Ø bovenring op je werkelijke inlaat).</div>
       </div>
+
+      <div class="card">
+        <h2><span class="idx">7</span> Toren-prestatie — uitgaande lucht &amp; vermogen</h2>
+        <div class="grid2">
+          <div class="field"><label for="tOut">Uittree-temperatuur (onderin)</label>
+            <div class="inputrow"><input id="tOut" type="number" step="0.1" value="18.0"><span class="unit">°C</span></div></div>
+          <div class="field"><label for="rvOut">Uittree-RV (onderin)</label>
+            <div class="inputrow"><input id="rvOut" type="number" step="0.1" min="0" max="100" value="90"><span class="unit">%</span></div></div>
+        </div>
+        <div class="result" style="margin-top:14px">
+          <div class="big"><span class="label">Koelvermogen (sensibel)</span><span class="num"><span id="prPsens">–</span><small>kW</small></span></div>
+          <div class="kv"><span class="k">Verdampingsrendement η</span><span class="v"><span id="prEff">–</span> %</span></div>
+          <div class="kv"><span class="k">Koeling ΔT (in → uit)</span><span class="v"><span id="prDT">–</span> °C</span></div>
+          <div class="kv"><span class="k">Verdampt water (werkelijk)</span><span class="v"><span id="prEvap">–</span> L/h</span></div>
+          <div class="kv"><span class="k">Latent vermogen (controle)</span><span class="v"><span id="prPlat">–</span> kW</span></div>
+          <div class="kv"><span class="k">Vochtinhoud uittree</span><span class="v"><span id="prWout">–</span> g/kg</span></div>
+        </div>
+        <div class="note" id="prNote"></div>
+      </div>
     </div>
 
     <aside>
@@ -343,7 +362,7 @@
       </div>
     </aside>
   </div>
-  <footer>Toren-debiet · lokaal, geen dataverzending · v12</footer>
+  <footer>Toren-debiet · lokaal, geen dataverzending · v13</footer>
 </div>
 
 <script>
@@ -488,7 +507,7 @@ function drawHeatmap(pts,R,vmin,vmax,rFlow,rPeak){
 const STORE="torenDebiet_v3";
 function save(){ try{
   const o={mode,rings:$("rings").value};
-  ["dRing","dVenturi","dOnder","meetLoc","temp","rv","baro","dp","k","dpUnit","inst","probeType","cp","acc","accUnit","kacc","teUrl","teUser","teDevice","teKeyT","teKeyH","teInterval"].forEach(id=>o[id]=$(id).value);
+  ["dRing","dVenturi","dOnder","meetLoc","temp","rv","baro","dp","k","dpUnit","inst","probeType","cp","acc","accUnit","kacc","teUrl","teUser","teDevice","teKeyT","teKeyH","teInterval","tOut","rvOut"].forEach(id=>o[id]=$(id).value);
   o.condMode=condMode; o.teAuto=$("teAuto").checked; o.teRemember=$("teRemember").checked; o.teProxy=$("teProxy").checked;
   if($("teRemember").checked) o.tePass=$("tePass").value;
   const tv={}; document.querySelectorAll(".tp").forEach(i=>{ if(i.value) tv[i.id]=i.value; });
@@ -496,7 +515,7 @@ function save(){ try{
 }catch(e){} }
 function load(){ try{
   const o=JSON.parse(localStorage.getItem(STORE)||"{}");
-  ["dRing","dVenturi","dOnder","meetLoc","temp","rv","baro","dp","k","rings","dpUnit","inst","probeType","cp","acc","accUnit","kacc","teUrl","teUser","teDevice","teKeyT","teKeyH","teInterval"].forEach(id=>{ if(o[id]!==undefined&&o[id]!==""&&$(id)) $(id).value=o[id]; });
+  ["dRing","dVenturi","dOnder","meetLoc","temp","rv","baro","dp","k","rings","dpUnit","inst","probeType","cp","acc","accUnit","kacc","teUrl","teUser","teDevice","teKeyT","teKeyH","teInterval","tOut","rvOut"].forEach(id=>{ if(o[id]!==undefined&&o[id]!==""&&$(id)) $(id).value=o[id]; });
   if(o.condMode) condMode=o.condMode;
   $("teAuto").checked=!!o.teAuto; $("teRemember").checked=!!o.teRemember; $("teProxy").checked=!!o.teProxy;
   if(o.tePass) $("tePass").value=o.tePass;
@@ -708,6 +727,32 @@ function compute(){
   $("wMax").textContent=Q>0?(mDa*dW*3600).toFixed(1):"–";
   $("evNote").innerHTML=`Theoretisch maximum bij <b>100% verzadiging</b> (adiabatische koeling langs constante natteboltemp.). De intredelucht koelt van ${Tc.toFixed(1)} °C naar ~${Twb.toFixed(1)} °C en wordt verzadigd; de opgenomen waterhoeveelheid = massadebiet droge lucht × Δvochtinhoud (${(dW*1000).toFixed(2)} g/kg). In de praktijk haal je een lagere verzadigingsgraad, dus reken dit als bovengrens.`;
 
+  // ---- toren-prestatie (werkelijke uittree-condities) ----
+  const Tout=parseFloat($("tOut").value), rvOut=parseFloat($("rvOut").value);
+  const okOut=!isNaN(Tout)&&!isNaN(rvOut)&&Q>0;
+  if(okOut){
+    const e_out=Math.max(0,Math.min(rvOut,100))/100*eSat(Tout);
+    const Wout_act=humRatio(e_out,pPa);
+    const dT=Tc-Tout;                                   // koeling (K)
+    const eff=(Tc-Twb)>0.01?(dT/(Tc-Twb))*100:0;       // verdampingsrendement
+    const cp=1.006+1.86*Win;                           // kJ/kg·K vochtige lucht
+    const Psens=mDa*cp*dT;                              // kW (sensibel)
+    const evap=Math.max(0,mDa*(Wout_act-Win));         // kg/s water
+    const Plat=evap*2450;                              // kW (latent, h_fg~2450 kJ/kg)
+    $("prPsens").textContent=Psens.toFixed(2);
+    $("prEff").textContent=eff.toFixed(0);
+    $("prDT").textContent=dT.toFixed(1);
+    $("prEvap").textContent=(evap*3600).toFixed(1);
+    $("prPlat").textContent=Plat.toFixed(2);
+    $("prWout").textContent=(Wout_act*1000).toFixed(2);
+    const diff=Psens>0?Math.abs(Psens-Plat)/Psens*100:0;
+    $("prNote").innerHTML=`η = (T_in − T_uit)/(T_in − natte bol) = (${Tc.toFixed(1)}−${Tout.toFixed(1)})/(${Tc.toFixed(1)}−${Twb.toFixed(1)}). `+
+      `Sensibel koelvermogen = ṁ_lucht·cp·ΔT; latent vermogen = verdampt water·h_fg. Bij zuiver adiabatische werking horen die ~gelijk te zijn (nu ${diff.toFixed(0)}% verschil) — een grote afwijking wijst op meetfout of warmte-uitwisseling met water/omgeving.`;
+  } else {
+    ["prPsens","prEff","prDT","prEvap","prPlat","prWout"].forEach(id=>$(id).textContent="–");
+    $("prNote").textContent="Vul de uittree-condities (T en RV onderin) in en zorg voor een geldig debiet Q.";
+  }
+
   // ---- Accutrol-bol kalibratie & correctie ----
   const accRaw=num($("acc").value)||0;
   const accM3s=$("accUnit").value==="cfm"?accRaw*0.000471947:accRaw/3600;
@@ -774,7 +819,7 @@ $("inst").addEventListener("change",()=>{ setUnitLabels(); compute(); });
 $("dpUnit").addEventListener("change",()=>{ setUnitLabels(); compute(); });
 $("probeType").addEventListener("change",()=>{ updateProbe(); compute(); });
 $("cp").addEventListener("input",compute);
-["temp","rv","baro","dp","k","acc","kacc"].forEach(id=>$(id).addEventListener("input",compute));
+["temp","rv","baro","dp","k","acc","kacc","tOut","rvOut"].forEach(id=>$(id).addEventListener("input",compute));
 $("accUnit").addEventListener("change",compute);
 ["teAuto","teInterval"].forEach(id=>$(id).addEventListener("change",teAutoSetup));
 ["teUrl","teUser","teDevice","teKeyT","teKeyH","teRemember"].forEach(id=>$(id).addEventListener("change",save));
