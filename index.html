@@ -349,15 +349,15 @@
             <input id="calRef" type="text" inputmode="decimal" placeholder="v-gemiddelde anemometer">
             <button class="seg" style="margin-top:6px;padding:8px 12px;border-radius:8px;cursor:pointer" onclick="grabCal('ref')">← neem huidige v-gemiddelde</button></div>
           <div class="field"><label for="calRaw">S-type kaal v — Cp=1 (m/s)</label>
-            <input id="calRaw" type="text" inputmode="decimal" placeholder="v-gemiddelde S-type">
-            <button class="seg" style="margin-top:6px;padding:8px 12px;border-radius:8px;cursor:pointer" onclick="grabCal('raw')">← neem huidige v-gemiddelde</button></div>
+            <input id="calRaw" type="text" inputmode="decimal" placeholder="volgt live de Pitot-traverse">
+            <span class="hint">Volgt automatisch de kale (Cp=1) Pitot-traverse uit kaart 3.</span></div>
         </div>
         <div class="result" style="margin-top:14px">
           <div class="big"><span class="label">Berekende Cp</span><span class="num"><span id="calCp">–</span></span></div>
           <div class="kv" style="grid-column:1/-1"><span class="k">v_referentie ÷ v_kaal</span>
             <span class="v"><button class="seg" style="padding:8px 12px;border-radius:8px;cursor:pointer;background:var(--accent);color:#fff;border:none" onclick="applyCp()">gebruik als sonde-Cp</button></span></div>
         </div>
-        <div class="note">Werkwijze: (1) meet met de <b>anemometer</b> een traverse — instrument = Anemometer — en klik "← neem huidige v-gemiddelde" bij <b>referentie</b>. (2) Meet dezelfde traverse met de <b>S-type</b> — instrument = Pitotbuis, sondetype S-type of Cp 1,00 — en klik "← neem huidige v-gemiddelde" bij <b>S-type kaal</b> (de app haalt de Cp er automatisch weer af, dus dit is de kale √(2Δp/ρ)). (3) Klik <b>gebruik als sonde-Cp</b>: de berekende Cp wordt als Handmatige Cp ingesteld. Kalibreer bij voldoende snelheid (Δp ruim boven 1 Pa) en in dezelfde bedrijfstoestand.</div>
+        <div class="note">Werkwijze: vul bij <b>referentie</b> je anemometer-snelheid in (m/s, omgerekend naar de meetsectie). Doe daarna de <b>S-type traverse</b> in kaart 3 (instrument = Pitotbuis) — het veld <b>S-type kaal</b> volgt dan automatisch de kale √(2Δp/ρ), ongeacht de ingestelde Cp. De berekende Cp verschijnt meteen; klik <b>gebruik als sonde-Cp</b> om 'm toe te passen. Kalibreer bij voldoende snelheid en middel liefst een paar traverses.</div>
       </div>
     </div>
 
@@ -380,7 +380,7 @@
       </div>
     </aside>
   </div>
-  <footer>Toren-debiet · lokaal, geen dataverzending · v14</footer>
+  <footer>Toren-debiet · lokaal, geen dataverzending · v15</footer>
 </div>
 
 <script>
@@ -782,6 +782,7 @@ function compute(){
   }
 
   // ---- Cp-kalibratie ----
+  if(isPitot && nPts>0) $("calRaw").value=lastRawV.toFixed(3);   // volgt live de kale Pitot-traverse
   const calRef=num($("calRef").value), calRaw=num($("calRaw").value);
   lastCalCp=(calRef!==null&&calRaw!==null&&calRaw>0)?calRef/calRaw:null;
   $("calCp").textContent=lastCalCp!==null?lastCalCp.toFixed(3):"–";
