@@ -341,6 +341,24 @@
         </div>
         <div class="note" id="prNote"></div>
       </div>
+
+      <div class="card">
+        <h2><span class="idx">8</span> Cp-kalibratie — S-type ijken op anemometer</h2>
+        <div class="grid2">
+          <div class="field"><label for="calRef">Referentie v — anemometer (m/s)</label>
+            <input id="calRef" type="text" inputmode="decimal" placeholder="v-gemiddelde anemometer">
+            <button class="seg" style="margin-top:6px;padding:8px 12px;border-radius:8px;cursor:pointer" onclick="grabCal('ref')">← neem huidige v-gemiddelde</button></div>
+          <div class="field"><label for="calRaw">S-type kaal v — Cp=1 (m/s)</label>
+            <input id="calRaw" type="text" inputmode="decimal" placeholder="v-gemiddelde S-type">
+            <button class="seg" style="margin-top:6px;padding:8px 12px;border-radius:8px;cursor:pointer" onclick="grabCal('raw')">← neem huidige v-gemiddelde</button></div>
+        </div>
+        <div class="result" style="margin-top:14px">
+          <div class="big"><span class="label">Berekende Cp</span><span class="num"><span id="calCp">–</span></span></div>
+          <div class="kv" style="grid-column:1/-1"><span class="k">v_referentie ÷ v_kaal</span>
+            <span class="v"><button class="seg" style="padding:8px 12px;border-radius:8px;cursor:pointer;background:var(--accent);color:#fff;border:none" onclick="applyCp()">gebruik als sonde-Cp</button></span></div>
+        </div>
+        <div class="note">Werkwijze: (1) meet met de <b>anemometer</b> een traverse — instrument = Anemometer — en klik "← neem huidige v-gemiddelde" bij <b>referentie</b>. (2) Meet dezelfde traverse met de <b>S-type</b> — instrument = Pitotbuis, sondetype S-type of Cp 1,00 — en klik "← neem huidige v-gemiddelde" bij <b>S-type kaal</b> (de app haalt de Cp er automatisch weer af, dus dit is de kale √(2Δp/ρ)). (3) Klik <b>gebruik als sonde-Cp</b>: de berekende Cp wordt als Handmatige Cp ingesteld. Kalibreer bij voldoende snelheid (Δp ruim boven 1 Pa) en in dezelfde bedrijfstoestand.</div>
+      </div>
     </div>
 
     <aside>
@@ -362,7 +380,7 @@
       </div>
     </aside>
   </div>
-  <footer>Toren-debiet · lokaal, geen dataverzending · v13</footer>
+  <footer>Toren-debiet · lokaal, geen dataverzending · v14</footer>
 </div>
 
 <script>
@@ -375,6 +393,7 @@ let lastKcalc=null;
 let condMode="manual";
 let teToken=null, teTimer=null;
 let teLastTs=null, teAgeTimer=null;
+let lastVgem=0, lastRawV=0, lastCalCp=null;
 
 function eSat(Tc){ return 611.2*Math.exp(17.62*Tc/(243.12+Tc)); }
 function dewPoint(Tc,rv){ const g=Math.log(Math.max(rv,0.01)/100)+17.62*Tc/(243.12+Tc); return 243.12*g/(17.62-g); }
@@ -507,7 +526,7 @@ function drawHeatmap(pts,R,vmin,vmax,rFlow,rPeak){
 const STORE="torenDebiet_v3";
 function save(){ try{
   const o={mode,rings:$("rings").value};
-  ["dRing","dVenturi","dOnder","meetLoc","temp","rv","baro","dp","k","dpUnit","inst","probeType","cp","acc","accUnit","kacc","teUrl","teUser","teDevice","teKeyT","teKeyH","teInterval","tOut","rvOut"].forEach(id=>o[id]=$(id).value);
+  ["dRing","dVenturi","dOnder","meetLoc","temp","rv","baro","dp","k","dpUnit","inst","probeType","cp","acc","accUnit","kacc","teUrl","teUser","teDevice","teKeyT","teKeyH","teInterval","tOut","rvOut","calRef","calRaw"].forEach(id=>o[id]=$(id).value);
   o.condMode=condMode; o.teAuto=$("teAuto").checked; o.teRemember=$("teRemember").checked; o.teProxy=$("teProxy").checked;
   if($("teRemember").checked) o.tePass=$("tePass").value;
   const tv={}; document.querySelectorAll(".tp").forEach(i=>{ if(i.value) tv[i.id]=i.value; });
@@ -515,7 +534,7 @@ function save(){ try{
 }catch(e){} }
 function load(){ try{
   const o=JSON.parse(localStorage.getItem(STORE)||"{}");
-  ["dRing","dVenturi","dOnder","meetLoc","temp","rv","baro","dp","k","rings","dpUnit","inst","probeType","cp","acc","accUnit","kacc","teUrl","teUser","teDevice","teKeyT","teKeyH","teInterval","tOut","rvOut"].forEach(id=>{ if(o[id]!==undefined&&o[id]!==""&&$(id)) $(id).value=o[id]; });
+  ["dRing","dVenturi","dOnder","meetLoc","temp","rv","baro","dp","k","rings","dpUnit","inst","probeType","cp","acc","accUnit","kacc","teUrl","teUser","teDevice","teKeyT","teKeyH","teInterval","tOut","rvOut","calRef","calRaw"].forEach(id=>{ if(o[id]!==undefined&&o[id]!==""&&$(id)) $(id).value=o[id]; });
   if(o.condMode) condMode=o.condMode;
   $("teAuto").checked=!!o.teAuto; $("teRemember").checked=!!o.teRemember; $("teProxy").checked=!!o.teProxy;
   if(o.tePass) $("tePass").value=o.tePass;
@@ -525,6 +544,14 @@ function load(){ try{
 }catch(e){ buildGrid(); } }
 
 function takeK(){ if(lastKcalc!==null){ $("kacc").value=lastKcalc.toFixed(3); compute(); } }
+function grabCal(which){
+  if(which==="ref") $("calRef").value=lastVgem.toFixed(3);
+  else $("calRaw").value=lastRawV.toFixed(3);
+  compute();
+}
+function applyCp(){
+  if(lastCalCp>0){ $("probeType").value="manual"; updateProbe(); $("cp").value=lastCalCp.toFixed(3); compute(); }
+}
 
 /* ---- ThingsEye live (ThingsBoard REST) ---- */
 function teBase(){ return $("teUrl").value.trim().replace(/\/+$/,""); }
@@ -696,6 +723,7 @@ function compute(){
   }
 
   const Ameet=A[loc], Q=vGem*Ameet;
+  lastVgem=vGem; lastRawV=(cp>0?vMeet/cp:vMeet);
   const vSec={ring:Q/A.ring,venturi:Q/A.venturi,onder:Q/A.onder};
 
   $("qh").textContent=Q>0?(Q*3600).toFixed(0):"–";
@@ -752,6 +780,11 @@ function compute(){
     ["prPsens","prEff","prDT","prEvap","prPlat","prWout"].forEach(id=>$(id).textContent="–");
     $("prNote").textContent="Vul de uittree-condities (T en RV onderin) in en zorg voor een geldig debiet Q.";
   }
+
+  // ---- Cp-kalibratie ----
+  const calRef=num($("calRef").value), calRaw=num($("calRaw").value);
+  lastCalCp=(calRef!==null&&calRaw!==null&&calRaw>0)?calRef/calRaw:null;
+  $("calCp").textContent=lastCalCp!==null?lastCalCp.toFixed(3):"–";
 
   // ---- Accutrol-bol kalibratie & correctie ----
   const accRaw=num($("acc").value)||0;
@@ -819,7 +852,7 @@ $("inst").addEventListener("change",()=>{ setUnitLabels(); compute(); });
 $("dpUnit").addEventListener("change",()=>{ setUnitLabels(); compute(); });
 $("probeType").addEventListener("change",()=>{ updateProbe(); compute(); });
 $("cp").addEventListener("input",compute);
-["temp","rv","baro","dp","k","acc","kacc","tOut","rvOut"].forEach(id=>$(id).addEventListener("input",compute));
+["temp","rv","baro","dp","k","acc","kacc","tOut","rvOut","calRef","calRaw"].forEach(id=>$(id).addEventListener("input",compute));
 $("accUnit").addEventListener("change",compute);
 ["teAuto","teInterval"].forEach(id=>$(id).addEventListener("change",teAutoSetup));
 ["teUrl","teUser","teDevice","teKeyT","teKeyH","teRemember"].forEach(id=>$(id).addEventListener("change",save));
