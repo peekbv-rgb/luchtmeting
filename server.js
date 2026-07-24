@@ -15,6 +15,7 @@ const {
   OUT_EXCEL_URL = "https://water-tech.cboost.nl/excel",
   OUT_SHEET = "VDB14",
   OUT_JSON_URL = "",   // optioneel: lichte JSON-bron per sensor; indien gezet, gebruikt i.p.v. Excel
+  OUT_SENSOR_URL = "https://water-tech.cboost.nl/sensors/A8404193CF590F43",  // sensorpagina (HTML), snelst
   OUT_TIMEOUT = "25000",
 } = process.env;
 
@@ -154,8 +155,21 @@ async function readOut(){
       ts: cellToTs(pick(node, ["timestamp","ts","time","datetime"])),
       sheet: OUT_SHEET, src: "json",
     };
+  } else if (OUT_SENSOR_URL){
+    // sensorpagina (HTML) — snelst en betrouwbaarst; nieuwste meting staat bovenaan
+    const r = await nodeFetch(OUT_SENSOR_URL, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "text/html,*/*" }, redirect: "follow", timeout });
+    if (!r.ok) throw new Error("sensor " + r.status);
+    const html = await r.text();
+    const text = html.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ");
+    const mMeas = text.match(/(-?\d+[.,]\d+)\s*°?\s*C\s+(\d+[.,]\d+)\s*%/i);
+    const mSeen = text.match(/Last seen:?\s*(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})/i)
+              || text.match(/(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})/);
+    let ts = null;
+    if (mSeen){ const t = Date.parse(mSeen[1].replace(" ", "T")); ts = isNaN(t) ? null : t; }
+    if (!mMeas) throw new Error("meting niet gevonden op sensorpagina");
+    out = { tOut: toNum2(mMeas[1]), rvOut: toNum2(mMeas[2]), ts, sheet: OUT_SHEET, src: "sensor" };
   } else {
-    // Watertech-Excel (volledige export)
+    // Watertech-Excel (volledige export) — traag, laatste keus
     const r = await nodeFetch(OUT_EXCEL_URL, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "*/*" }, redirect: "follow", timeout });
     if (!r.ok) throw new Error("excel " + r.status);
     const buf = await r.buffer();
