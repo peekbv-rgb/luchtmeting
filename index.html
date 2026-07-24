@@ -386,7 +386,7 @@
       </div>
     </aside>
   </div>
-  <footer>Toren-debiet · lokaal, geen dataverzending · v17</footer>
+  <footer>Toren-debiet · lokaal, geen dataverzending · v19</footer>
 </div>
 
 <script>
@@ -575,7 +575,10 @@ async function outFetch(){
     st.textContent=(j.tOut!=null?(+j.tOut).toFixed(1)+"°C ":"")+(j.rvOut!=null?(+j.rvOut).toFixed(1)+"% ":"")+"("+(j.sheet||"VDB14")+") · "+when;
     st.style.color="#0f9d58";
   }catch(err){
-    st.textContent=(err instanceof TypeError)?"Geen verbinding met /api/out (draait de proxy?).":"Fout: "+err.message;
+    const m=String(err.message||"");
+    if(m.includes("timeout")) st.textContent="Bron traag/offline — vul de uittree handmatig in.";
+    else if(err instanceof TypeError) st.textContent="Geen verbinding met /api/out (draait de proxy?).";
+    else st.textContent="Fout: "+m;
     st.style.color="var(--warn)";
   }
 }
