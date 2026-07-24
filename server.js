@@ -3,6 +3,7 @@
 const express = require("express");
 const path = require("path");
 const XLSX = require("xlsx");
+const nodeFetch = require("node-fetch");   // v2 — zelfde als de werkende data-app
 const app = express();
 
 const {
@@ -134,18 +135,13 @@ function cellToTs(v){
 async function readOut(){
   const now = Date.now();
   if (outCache.data && now - outCache.at < OUT_MS) return outCache.data;
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 90000);
-  let r;
-  try {
-    r = await fetch(OUT_EXCEL_URL, {
-      headers: { "User-Agent": "Mozilla/5.0", "Accept": "*/*" },
-      redirect: "follow",
-      signal: ctrl.signal,
-    });
-  } finally { clearTimeout(timer); }
+  const r = await nodeFetch(OUT_EXCEL_URL, {
+    headers: { "User-Agent": "Mozilla/5.0", "Accept": "*/*" },
+    redirect: "follow",
+    timeout: 90000,
+  });
   if (!r.ok) throw new Error("excel " + r.status);
-  const buf = Buffer.from(await r.arrayBuffer());
+  const buf = await r.buffer();
   const wb = XLSX.read(buf, { type: "buffer", cellDates: false, cellNF: false, cellStyles: false, cellHTML: false });
   const ws = wb.Sheets[OUT_SHEET];
   if (!ws) throw new Error("tabblad '" + OUT_SHEET + "' niet gevonden");
@@ -166,7 +162,8 @@ app.get("/api/out", async (req, res) => {
     const o = await readOut();
     res.json(o);
   } catch (e) {
-    res.status(502).json({ error: String(e.message || e) });
+    const cause = e && e.cause ? (e.cause.code || e.cause.message || String(e.cause)) : null;
+    res.status(502).json({ error: String(e.message || e), cause });
   }
 });
 
