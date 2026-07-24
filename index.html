@@ -386,7 +386,7 @@
       </div>
     </aside>
   </div>
-  <footer>Toren-debiet · lokaal, geen dataverzending · v20</footer>
+  <footer>Toren-debiet · lokaal, geen dataverzending · v22</footer>
 </div>
 
 <script>
@@ -543,7 +543,7 @@ function load(){ try{
   const o=JSON.parse(localStorage.getItem(STORE)||"{}");
   ["dRing","dVenturi","dOnder","meetLoc","temp","rv","baro","dp","k","rings","dpUnit","inst","probeType","cp","acc","accUnit","kacc","teUrl","teUser","teDevice","teKeyT","teKeyH","teInterval","tOut","rvOut","calRef","calRaw"].forEach(id=>{ if(o[id]!==undefined&&o[id]!==""&&$(id)) $(id).value=o[id]; });
   if(o.condMode) condMode=o.condMode;
-  $("teAuto").checked=!!o.teAuto; $("teRemember").checked=!!o.teRemember; $("teProxy").checked=!!o.teProxy; $("outAuto").checked=!!o.outAuto;
+  $("teAuto").checked=!!o.teAuto; $("teRemember").checked=!!o.teRemember; $("teProxy").checked=!!o.teProxy; $("outAuto").checked=false;
   if(o.tePass) $("tePass").value=o.tePass;
   if(o.mode) mode=o.mode;
   buildGrid();
