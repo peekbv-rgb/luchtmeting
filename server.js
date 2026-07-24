@@ -2,6 +2,7 @@
 // Inloggegevens komen uit environment-variabelen, niet uit de browser.
 const express = require("express");
 const path = require("path");
+const XLSX = require("xlsx");
 const app = express();
 
 const {
@@ -10,6 +11,8 @@ const {
   TE_KEY_H = "humidity",
   TE_LAT = "51.6606",
   TE_LON = "5.6172",
+  OUT_EXCEL_URL = "https://water-tech.cboost.nl/excel",
+  OUT_SHEET = "VDB14",
 } = process.env;
 
 let token = null;
@@ -106,7 +109,62 @@ app.get("/api/te", async (req, res) => {
   }
 });
 
-app.use(express.static(path.join(__dirname)));
+// --- uittree-condities uit Excel (tabblad per sensor) ---
+let outCache = { at: 0, data: null };
+const OUT_MS = 30000; // Excel elke 30 s verversen
+
+function toNum2(v){
+  if (v === null || v === undefined || v === "") return null;
+  const n = parseFloat(String(v).replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+function cellToTs(v){
+  // Excel-datum (getal) of tekst -> ms sinds epoch, of null
+  if (typeof v === "number"){
+    const d = XLSX.SSF.parse_date_code(v);
+    if (d) return Date.UTC(d.y, d.m - 1, d.d, d.H, d.M, Math.floor(d.S));
+  }
+  const s = String(v).trim();
+  // formaat "MM-DD HH:MM" (zonder jaar) -> huidig jaar
+  const m = s.match(/^(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})/);
+  if (m){
+    const now = new Date();
+    return new Date(now.getFullYear(), +m[1]-1, +m[2], +m[3], +m[4]).getTime();
+  }
+  const t = Date.parse(s);
+  return isNaN(t) ? null : t;
+}
+
+async function readOut(){
+  const now = Date.now();
+  if (outCache.data && now - outCache.at < OUT_MS) return outCache.data;
+  const r = await fetch(OUT_EXCEL_URL);
+  if (!r.ok) throw new Error("excel " + r.status);
+  const buf = Buffer.from(await r.arrayBuffer());
+  const wb = XLSX.read(buf, { type: "buffer", cellDates: false });
+  const ws = wb.Sheets[OUT_SHEET];
+  if (!ws) throw new Error("tabblad '" + OUT_SHEET + "' niet gevonden");
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+  // rij 0 = koppen (timestamp, humidity, temperature); rij 1 = nieuwste meting
+  const row = rows[1] || [];
+  const out = {
+    tOut: toNum2(row[2]),   // C = temperature
+    rvOut: toNum2(row[1]),  // B = humidity
+    ts: cellToTs(row[0]),   // A = timestamp
+    sheet: OUT_SHEET,
+  };
+  outCache = { at: now, data: out };
+  return out;
+}
+
+app.get("/api/out", async (req, res) => {
+  try {
+    const o = await readOut();
+    res.json(o);
+  } catch (e) {
+    res.status(502).json({ error: String(e.message || e) });
+  }
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Toren-debiet draait op poort " + PORT));
