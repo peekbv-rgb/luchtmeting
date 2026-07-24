@@ -180,5 +180,16 @@ app.get("/api/out", async (req, res) => {
   }
 });
 
+// --- statische app serveren (stond eerder per ongeluk uit) ---
+const fs = require("fs");
+app.get("/", (req, res) => {
+  const idx = path.join(__dirname, "index.html");
+  fs.access(idx, fs.constants.R_OK, (err) => {
+    if (err) return res.status(500).send("index.html niet gevonden: " + idx + " — map bevat: " + fs.readdirSync(__dirname).join(", "));
+    res.sendFile(idx);
+  });
+});
+app.use(express.static(path.join(__dirname)));
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Toren-debiet draait op poort " + PORT));
