@@ -122,15 +122,11 @@ function cellToTs(v){
   // Excel-datum (getal) of tekst -> ms sinds epoch, of null
   if (typeof v === "number"){
     const d = XLSX.SSF.parse_date_code(v);
-    if (d) return Date.UTC(d.y, d.m - 1, d.d, d.H, d.M, Math.floor(d.S));
+    if (d) return new Date(d.y, d.m - 1, d.d, d.H || 0, d.M || 0, Math.floor(d.S || 0)).getTime();
   }
   const s = String(v).trim();
-  // formaat "MM-DD HH:MM" (zonder jaar) -> huidig jaar
-  const m = s.match(/^(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})/);
-  if (m){
-    const now = new Date();
-    return new Date(now.getFullYear(), +m[1]-1, +m[2], +m[3], +m[4]).getTime();
-  }
+  const m = s.match(/^(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})/);   // "MM-DD HH:MM" zonder jaar
+  if (m){ const now = new Date(); return new Date(now.getFullYear(), +m[1]-1, +m[2], +m[3], +m[4]).getTime(); }
   const t = Date.parse(s);
   return isNaN(t) ? null : t;
 }
@@ -138,15 +134,23 @@ function cellToTs(v){
 async function readOut(){
   const now = Date.now();
   if (outCache.data && now - outCache.at < OUT_MS) return outCache.data;
-  const r = await fetch(OUT_EXCEL_URL);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 90000);
+  let r;
+  try {
+    r = await fetch(OUT_EXCEL_URL, {
+      headers: { "User-Agent": "Mozilla/5.0", "Accept": "*/*" },
+      redirect: "follow",
+      signal: ctrl.signal,
+    });
+  } finally { clearTimeout(timer); }
   if (!r.ok) throw new Error("excel " + r.status);
   const buf = Buffer.from(await r.arrayBuffer());
-  const wb = XLSX.read(buf, { type: "buffer", cellDates: false });
+  const wb = XLSX.read(buf, { type: "buffer", cellDates: false, cellNF: false, cellStyles: false, cellHTML: false });
   const ws = wb.Sheets[OUT_SHEET];
   if (!ws) throw new Error("tabblad '" + OUT_SHEET + "' niet gevonden");
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
-  // rij 0 = koppen (timestamp, humidity, temperature); rij 1 = nieuwste meting
-  const row = rows[1] || [];
+  const row = rows[1] || [];   // rij 0 = koppen; rij 1 = nieuwste meting
   const out = {
     tOut: toNum2(row[2]),   // C = temperature
     rvOut: toNum2(row[1]),  // B = humidity
