@@ -325,10 +325,16 @@
 
       <div class="card">
         <h2><span class="idx">7</span> Toren-prestatie — uitgaande lucht &amp; vermogen</h2>
+        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+          <button id="outFetchBtn" class="seg" style="padding:9px 14px;border-radius:8px;cursor:pointer;background:var(--accent);color:#fff;border:none" onclick="outFetch()">Uittree live ophalen (VDB14)</button>
+          <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px"><input id="outAuto" type="checkbox" style="width:auto"> auto-verversen</label>
+          <span id="outStatus" style="font-family:var(--mono);font-size:12px;color:var(--muted)"></span>
+          <span id="outAge" style="font-family:var(--mono);font-size:12px;color:var(--muted)"></span>
+        </div>
         <div class="grid2">
-          <div class="field"><label for="tOut">Uittree-temperatuur (onderin)</label>
+          <div class="field"><label for="tOut">Uittree-temperatuur (onderin) <span id="liveBadgeTo" class="tag" style="display:none">live</span></label>
             <div class="inputrow"><input id="tOut" type="number" step="0.1" value="18.0"><span class="unit">°C</span></div></div>
-          <div class="field"><label for="rvOut">Uittree-RV (onderin)</label>
+          <div class="field"><label for="rvOut">Uittree-RV (onderin) <span id="liveBadgeRo" class="tag" style="display:none">live</span></label>
             <div class="inputrow"><input id="rvOut" type="number" step="0.1" min="0" max="100" value="90"><span class="unit">%</span></div></div>
         </div>
         <div class="result" style="margin-top:14px">
@@ -380,7 +386,7 @@
       </div>
     </aside>
   </div>
-  <footer>Toren-debiet · lokaal, geen dataverzending · v15</footer>
+  <footer>Toren-debiet · lokaal, geen dataverzending · v16</footer>
 </div>
 
 <script>
@@ -393,6 +399,7 @@ let lastKcalc=null;
 let condMode="manual";
 let teToken=null, teTimer=null;
 let teLastTs=null, teAgeTimer=null;
+let outTimer=null, outLastTs=null, outAgeTimer=null;
 let lastVgem=0, lastRawV=0, lastCalCp=null;
 
 function eSat(Tc){ return 611.2*Math.exp(17.62*Tc/(243.12+Tc)); }
@@ -527,7 +534,7 @@ const STORE="torenDebiet_v3";
 function save(){ try{
   const o={mode,rings:$("rings").value};
   ["dRing","dVenturi","dOnder","meetLoc","temp","rv","baro","dp","k","dpUnit","inst","probeType","cp","acc","accUnit","kacc","teUrl","teUser","teDevice","teKeyT","teKeyH","teInterval","tOut","rvOut","calRef","calRaw"].forEach(id=>o[id]=$(id).value);
-  o.condMode=condMode; o.teAuto=$("teAuto").checked; o.teRemember=$("teRemember").checked; o.teProxy=$("teProxy").checked;
+  o.condMode=condMode; o.teAuto=$("teAuto").checked; o.teRemember=$("teRemember").checked; o.teProxy=$("teProxy").checked; o.outAuto=$("outAuto").checked;
   if($("teRemember").checked) o.tePass=$("tePass").value;
   const tv={}; document.querySelectorAll(".tp").forEach(i=>{ if(i.value) tv[i.id]=i.value; });
   o.tv=tv; localStorage.setItem(STORE,JSON.stringify(o));
@@ -536,7 +543,7 @@ function load(){ try{
   const o=JSON.parse(localStorage.getItem(STORE)||"{}");
   ["dRing","dVenturi","dOnder","meetLoc","temp","rv","baro","dp","k","rings","dpUnit","inst","probeType","cp","acc","accUnit","kacc","teUrl","teUser","teDevice","teKeyT","teKeyH","teInterval","tOut","rvOut","calRef","calRaw"].forEach(id=>{ if(o[id]!==undefined&&o[id]!==""&&$(id)) $(id).value=o[id]; });
   if(o.condMode) condMode=o.condMode;
-  $("teAuto").checked=!!o.teAuto; $("teRemember").checked=!!o.teRemember; $("teProxy").checked=!!o.teProxy;
+  $("teAuto").checked=!!o.teAuto; $("teRemember").checked=!!o.teRemember; $("teProxy").checked=!!o.teProxy; $("outAuto").checked=!!o.outAuto;
   if(o.tePass) $("tePass").value=o.tePass;
   if(o.mode) mode=o.mode;
   buildGrid();
@@ -544,6 +551,39 @@ function load(){ try{
 }catch(e){ buildGrid(); } }
 
 function takeK(){ if(lastKcalc!==null){ $("kacc").value=lastKcalc.toFixed(3); compute(); } }
+
+function renderOutAge(){
+  const el=$("outAge"); if(!el) return;
+  if(outLastTs==null){ el.textContent=""; return; }
+  const min=Math.floor((Date.now()-outLastTs)/60000);
+  let txt,col;
+  if(min<1){ txt="zojuist"; col="#0f9d58"; }
+  else { txt=min+" min geleden"; col=min>60?"var(--warn)":(min>30?"var(--amber)":"var(--muted)"); }
+  el.textContent="· meting "+txt; el.style.color=col;
+}
+async function outFetch(){
+  const st=$("outStatus"); st.textContent="Ophalen…"; st.style.color="var(--muted)";
+  try{
+    const r=await fetch("/api/out",{cache:"no-store"});
+    if(!r.ok) throw new Error("out "+r.status);
+    const j=await r.json();
+    if(j.error) throw new Error(j.error);
+    if(j.tOut!=null){ $("tOut").value=(+j.tOut).toFixed(1); $("liveBadgeTo").style.display=""; }
+    if(j.rvOut!=null){ $("rvOut").value=(+j.rvOut).toFixed(1); $("liveBadgeRo").style.display=""; }
+    outLastTs=j.ts||null; renderOutAge(); compute(); save();
+    const when=j.ts?new Date(j.ts).toLocaleTimeString("nl-NL"):"—";
+    st.textContent=(j.tOut!=null?(+j.tOut).toFixed(1)+"°C ":"")+(j.rvOut!=null?(+j.rvOut).toFixed(1)+"% ":"")+"("+(j.sheet||"VDB14")+") · "+when;
+    st.style.color="#0f9d58";
+  }catch(err){
+    st.textContent=(err instanceof TypeError)?"Geen verbinding met /api/out (draait de proxy?).":"Fout: "+err.message;
+    st.style.color="var(--warn)";
+  }
+}
+function outAutoSetup(){
+  if(outTimer){ clearInterval(outTimer); outTimer=null; }
+  if(outAgeTimer){ clearInterval(outAgeTimer); outAgeTimer=null; }
+  if($("outAuto").checked){ outTimer=setInterval(outFetch,60000); outAgeTimer=setInterval(renderOutAge,30000); outFetch(); }
+}
 function grabCal(which){
   if(which==="ref") $("calRef").value=lastVgem.toFixed(3);
   else $("calRaw").value=lastRawV.toFixed(3);
@@ -855,6 +895,7 @@ $("probeType").addEventListener("change",()=>{ updateProbe(); compute(); });
 $("cp").addEventListener("input",compute);
 ["temp","rv","baro","dp","k","acc","kacc","tOut","rvOut","calRef","calRaw"].forEach(id=>$(id).addEventListener("input",compute));
 $("accUnit").addEventListener("change",compute);
+$("outAuto").addEventListener("change",()=>{ outAutoSetup(); save(); });
 ["teAuto","teInterval"].forEach(id=>$(id).addEventListener("change",teAutoSetup));
 ["teUrl","teUser","teDevice","teKeyT","teKeyH","teRemember"].forEach(id=>$(id).addEventListener("change",save));
 $("teProxy").addEventListener("change",()=>{ updateLiveFields(); save(); if(condMode==="live") teFetch(); });
@@ -863,6 +904,7 @@ load();
 updateProbe();
 setUnitLabels();
 setCondMode(condMode);
+outAutoSetup();
 setMode(mode);
 compute();
 </script>
