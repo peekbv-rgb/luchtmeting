@@ -14,6 +14,8 @@ const {
   TE_LON = "5.6172",
   OUT_EXCEL_URL = "https://water-tech.cboost.nl/excel",
   OUT_SHEET = "VDB14",
+  OUT_JSON_URL = "",   // optioneel: lichte JSON-bron per sensor; indien gezet, gebruikt i.p.v. Excel
+  OUT_TIMEOUT = "25000",
 } = process.env;
 
 let token = null;
@@ -132,27 +134,38 @@ function cellToTs(v){
   return isNaN(t) ? null : t;
 }
 
+function pick(obj, keys){ for(const k of keys){ if(obj && obj[k]!==undefined && obj[k]!==null) return obj[k]; } return null; }
+
 async function readOut(){
   const now = Date.now();
   if (outCache.data && now - outCache.at < OUT_MS) return outCache.data;
-  const r = await nodeFetch(OUT_EXCEL_URL, {
-    headers: { "User-Agent": "Mozilla/5.0", "Accept": "*/*" },
-    redirect: "follow",
-    timeout: 90000,
-  });
-  if (!r.ok) throw new Error("excel " + r.status);
-  const buf = await r.buffer();
-  const wb = XLSX.read(buf, { type: "buffer", cellDates: false, cellNF: false, cellStyles: false, cellHTML: false });
-  const ws = wb.Sheets[OUT_SHEET];
-  if (!ws) throw new Error("tabblad '" + OUT_SHEET + "' niet gevonden");
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
-  const row = rows[1] || [];   // rij 0 = koppen; rij 1 = nieuwste meting
-  const out = {
-    tOut: toNum2(row[2]),   // C = temperature
-    rvOut: toNum2(row[1]),  // B = humidity
-    ts: cellToTs(row[0]),   // A = timestamp
-    sheet: OUT_SHEET,
-  };
+  const timeout = parseInt(OUT_TIMEOUT, 10) || 25000;
+
+  let out;
+  if (OUT_JSON_URL){
+    // lichte JSON-bron (in te stellen zodra beschikbaar)
+    const r = await nodeFetch(OUT_JSON_URL, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json,*/*" }, redirect: "follow", timeout });
+    if (!r.ok) throw new Error("json " + r.status);
+    const j = await r.json();
+    const node = j.data || j.latest || j;   // flexibel: pak het datablok
+    out = {
+      tOut: toNum2(pick(node, ["temperature","temp","t","tOut"])),
+      rvOut: toNum2(pick(node, ["humidity","rv","rh","h","rvOut"])),
+      ts: cellToTs(pick(node, ["timestamp","ts","time","datetime"])),
+      sheet: OUT_SHEET, src: "json",
+    };
+  } else {
+    // Watertech-Excel (volledige export)
+    const r = await nodeFetch(OUT_EXCEL_URL, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "*/*" }, redirect: "follow", timeout });
+    if (!r.ok) throw new Error("excel " + r.status);
+    const buf = await r.buffer();
+    const wb = XLSX.read(buf, { type: "buffer", cellDates: false, cellNF: false, cellStyles: false, cellHTML: false });
+    const ws = wb.Sheets[OUT_SHEET];
+    if (!ws) throw new Error("tabblad '" + OUT_SHEET + "' niet gevonden");
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+    const row = rows[1] || [];
+    out = { tOut: toNum2(row[2]), rvOut: toNum2(row[1]), ts: cellToTs(row[0]), sheet: OUT_SHEET, src: "excel" };
+  }
   outCache = { at: now, data: out };
   return out;
 }
