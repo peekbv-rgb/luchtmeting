@@ -194,6 +194,48 @@ app.get("/api/out", async (req, res) => {
   }
 });
 
+// --- historie: intree (ThingsEye) + uittree (VDB14-sensorpagina) ---
+async function historyTE(hours){
+  if (!token) await login();
+  const end = Date.now(), start = end - hours * 3600000;
+  const keys = [TE_KEY_T, TE_KEY_H].filter(Boolean).join(",");
+  const url = base() + "/api/plugins/telemetry/DEVICE/" + TE_DEVICE +
+    "/values/timeseries?keys=" + encodeURIComponent(keys) +
+    "&startTs=" + start + "&endTs=" + end + "&limit=5000&orderBy=ASC";
+  let r = await fetch(url, { headers: { "X-Authorization": "Bearer " + token } });
+  if (r.status === 401) { await login(); r = await fetch(url, { headers: { "X-Authorization": "Bearer " + token } }); }
+  if (!r.ok) throw new Error("te-history " + r.status);
+  return r.json();   // { <TE_KEY_T>:[{ts,value}], <TE_KEY_H>:[...] }
+}
+
+async function historyOut(){
+  if (!OUT_SENSOR_URL) return [];
+  const timeout = parseInt(OUT_TIMEOUT, 10) || 25000;
+  const r = await nodeFetch(OUT_SENSOR_URL, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "text/html,*/*" }, redirect: "follow", timeout });
+  if (!r.ok) throw new Error("sensor " + r.status);
+  const html = await r.text();
+  const text = html.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ");
+  const re = /(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})[\s\S]{0,40}?(-?\d+[.,]\d+)\s*°?\s*C\s+(\d+[.,]\d+)\s*%/g;
+  const arr = []; let m;
+  while ((m = re.exec(text))){
+    const t = Date.parse(m[1].replace(" ", "T"));
+    if (!isNaN(t)) arr.push({ ts: t, t: toNum2(m[2]), rv: toNum2(m[3]) });
+  }
+  arr.sort((a, b) => a.ts - b.ts);   // oplopend in tijd
+  return arr;
+}
+
+app.get("/api/history", async (req, res) => {
+  const hours = Math.min(Math.max(parseInt(req.query.hours, 10) || 24, 1), 168);
+  const result = { intree: null, uittree: null, errors: {} };
+  try { result.intree = await historyTE(hours); } catch (e) { result.errors.intree = String(e.message || e); }
+  try {
+    const since = Date.now() - hours * 3600000;
+    result.uittree = (await historyOut()).filter(p => p.ts >= since);
+  } catch (e) { result.errors.uittree = String(e.message || e); }
+  res.json({ hours, keys: { T: TE_KEY_T, H: TE_KEY_H }, ...result });
+});
+
 // --- statische app serveren (stond eerder per ongeluk uit) ---
 const fs = require("fs");
 app.get("/", (req, res) => {
