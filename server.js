@@ -200,15 +200,22 @@ async function historyTE(hours){
   if (!token) await login();
   const end = Date.now(), start = end - hours * 3600000;
   const keys = [TE_KEY_T, TE_KEY_H].filter(Boolean).join(",");
-  let url = base() + "/api/plugins/telemetry/DEVICE/" + TE_DEVICE +
+  const baseUrl = base() + "/api/plugins/telemetry/DEVICE/" + TE_DEVICE +
     "/values/timeseries?keys=" + encodeURIComponent(keys) +
-    "&startTs=" + start + "&endTs=" + end + "&orderBy=ASC";
-  if (hours > 48) url += "&interval=3600000&agg=AVG&limit=5000";   // uurgemiddelde bij lange periodes
-  else url += "&limit=50000";
-  let r = await fetch(url, { headers: { "X-Authorization": "Bearer " + token } });
-  if (r.status === 401) { await login(); r = await fetch(url, { headers: { "X-Authorization": "Bearer " + token } }); }
-  if (!r.ok) throw new Error("te-history " + r.status);
-  return r.json();   // { <TE_KEY_T>:[{ts,value}], <TE_KEY_H>:[...] }
+    "&startTs=" + start + "&endTs=" + end;
+  // primair: uurgemiddelde bij lange periodes; fallback: ruwe punten (agg=NONE)
+  const variants = [];
+  if (hours > 48) variants.push(baseUrl + "&intervalType=MILLISECONDS&interval=3600000&agg=AVG&limit=50000&orderBy=ASC");
+  variants.push(baseUrl + "&agg=NONE&limit=50000&orderBy=ASC");
+  variants.push(baseUrl + "&limit=50000");
+  let lastStatus = 0;
+  for (const url of variants){
+    let r = await fetch(url, { headers: { "X-Authorization": "Bearer " + token } });
+    if (r.status === 401) { await login(); r = await fetch(url, { headers: { "X-Authorization": "Bearer " + token } }); }
+    if (r.ok) return r.json();
+    lastStatus = r.status;
+  }
+  throw new Error("te-history " + lastStatus);
 }
 
 let outHistCache = { at: 0, data: null };
