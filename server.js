@@ -2,6 +2,7 @@
 // Inloggegevens komen uit environment-variabelen, niet uit de browser.
 const express = require("express");
 const path = require("path");
+const fs0 = require("fs");
 const XLSX = require("xlsx");
 const nodeFetch = require("node-fetch");   // v2 — zelfde als de werkende data-app
 const app = express();
@@ -214,6 +215,12 @@ let outHistCache = { at: 0, data: null };
 const OUT_HIST_MS = 600000; // volledige Excel-historie 10 min cachen
 let outHistLoading = false;
 
+// vaste (hard ingezette) historie uit bestand — snel, blokkeert nooit
+let baseHist = [];
+try {
+  baseHist = JSON.parse(fs0.readFileSync(path.join(__dirname, "vdb14-history.json"), "utf8"));
+} catch (e) { baseHist = []; }
+
 async function fetchOutHistExcel(){
   const r = await nodeFetch(OUT_EXCEL_URL, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "*/*" }, redirect: "follow", timeout: 60000 });
   if (!r.ok) throw new Error("excel " + r.status);
@@ -266,32 +273,26 @@ async function historyOut(){
 
 app.get("/api/history", async (req, res) => {
   try {
-    const hours = Math.min(Math.max(parseInt(req.query.hours, 10) || 24, 1), 1560);
+    const hours = Math.min(Math.max(parseInt(req.query.hours, 10) || 24, 1), 8760);
     const result = { intree: null, uittree: null, errors: {} };
     try { result.intree = await historyTE(hours); } catch (e) { result.errors.intree = String(e.message || e); }
 
-    let outAll = [];
-    if (hours > 24) {
-      // uittree uit Excel: alleen uit cache lezen; download gebeurt op de achtergrond (blokkeert nooit)
-      const fresh = outHistCache.data && (Date.now() - outHistCache.at < OUT_HIST_MS);
-      if (fresh) {
-        outAll = outHistCache.data;
-      } else {
-        refreshOutHistBg();                 // start/ververs op de achtergrond
-        outAll = outHistCache.data || [];   // toon wat er al is (kan leeg zijn bij eerste keer)
-        if (!outAll.length) result.errors.uittree = "Excel-historie wordt op de achtergrond opgehaald — klik over ~1 min opnieuw.";
-      }
-    } else {
-      try { outAll = await historyOut(); } catch (e) { result.errors.uittree = String(e.message || e); }
-    }
-
     const since = Date.now() - hours * 3600000;
-    const filtered = outAll.filter(p => p.ts >= since);
-    result.uittree = filtered.length ? filtered : outAll;
+    // vaste (hard ingezette) historie als basis
+    let uit = baseHist.filter(p => p.ts >= since);
+    // recente punten van de live sensorpagina eraan plakken (laatste ~dag), niet-blokkerend bij fout
+    try {
+      const recent = await historyOut();
+      const map = new Map(uit.map(p => [p.ts, p]));
+      recent.forEach(p => { if (p.ts >= since) map.set(p.ts, p); });
+      uit = [...map.values()].sort((a, b) => a.ts - b.ts);
+    } catch (e) { result.errors.uittree = "live-aanvulling: " + String(e.message || e); }
+
+    result.uittree = uit;
     if (req.query.debug) {
-      return res.json({ hours, uittree_total: outAll.length, uittree_in_window: filtered.length,
-        cache_age_s: outHistCache.at ? Math.round((Date.now() - outHistCache.at) / 1000) : null,
-        loading: outHistLoading, uittree_sample: outAll.slice(-5), keys: { T: TE_KEY_T, H: TE_KEY_H } });
+      return res.json({ hours, base_total: baseHist.length, uittree_in_window: uit.length,
+        base_oldest: baseHist.length ? new Date(baseHist[0].ts).toISOString() : null,
+        keys: { T: TE_KEY_T, H: TE_KEY_H } });
     }
     res.json({ hours, keys: { T: TE_KEY_T, H: TE_KEY_H }, ...result });
   } catch (e) {
