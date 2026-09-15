@@ -365,9 +365,28 @@
         </div>
         <div class="note">Werkwijze: vul bij <b>referentie</b> je anemometer-snelheid in (m/s, omgerekend naar de meetsectie). Doe daarna de <b>S-type traverse</b> in kaart 3 (instrument = Pitotbuis) — het veld <b>S-type kaal</b> volgt dan automatisch de kale √(2Δp/ρ), ongeacht de ingestelde Cp. De berekende Cp verschijnt meteen; klik <b>gebruik als sonde-Cp</b> om 'm toe te passen. Kalibreer bij voldoende snelheid en middel liefst een paar traverses.</div>
       </div>
-    </div>
 
-    <aside>
+      <div class="card">
+        <h2><span class="idx">9</span> Historie — intree vs. uittree</h2>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+          <button class="seg" style="padding:9px 14px;border-radius:8px;cursor:pointer;background:var(--accent);color:#fff;border:none" onclick="histFetch()">Laad grafiek</button>
+          <label style="font-size:12px;color:var(--muted)">Periode
+            <select id="histHours" style="margin-left:6px;padding:6px 8px;border-radius:6px">
+              <option value="6">6 uur</option>
+              <option value="24" selected>24 uur</option>
+              <option value="48">48 uur</option>
+              <option value="168">7 dagen</option>
+            </select>
+          </label>
+          <span id="histStatus" style="font-family:var(--mono);font-size:12px;color:var(--muted)"></span>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Temperatuur (°C)</div>
+        <svg id="chartT" viewBox="0 0 720 240" style="width:100%;height:auto;background:var(--panel,#fff);border:1px solid var(--line-soft,#eee);border-radius:8px"></svg>
+        <div style="font-size:12px;color:var(--muted);margin:14px 0 4px">Relatieve vochtigheid (%)</div>
+        <svg id="chartH" viewBox="0 0 720 240" style="width:100%;height:auto;background:var(--panel,#fff);border:1px solid var(--line-soft,#eee);border-radius:8px"></svg>
+        <div class="note">Intree = <b>ThingsEye</b>-sensor (bovenin), uittree = <b>VDB14</b> (Watertech). De historie komt uit de bronnen zelf; er wordt (nog) niet apart gelogd. Vanaf nu logt de app niets extra's — wil je gegarandeerde eigen logging, dan is een database de volgende stap.</div>
+      </div>
+    </div>
       <div class="schema">
         <h2>Stromingsschema</h2>
         <p class="cap">stroming ▼ omlaag · Q constant · v ~ 1/A</p>
@@ -386,7 +405,7 @@
       </div>
     </aside>
   </div>
-  <footer>Toren-debiet · lokaal, geen dataverzending · v22</footer>
+  <footer>Toren-debiet · lokaal, geen dataverzending · v23</footer>
 </div>
 
 <script>
@@ -551,6 +570,62 @@ function load(){ try{
 }catch(e){ buildGrid(); } }
 
 function takeK(){ if(lastKcalc!==null){ $("kacc").value=lastKcalc.toFixed(3); compute(); } }
+
+function drawChart(svgId, series, unit){
+  const svg=$(svgId); if(!svg) return;
+  const W=720,H=240,ml=44,mr=12,mt=12,mb=26;
+  const all=[]; series.forEach(s=>s.pts.forEach(p=>{ if(p.v!=null&&isFinite(p.v)) all.push(p); }));
+  if(all.length===0){ svg.innerHTML='<text x="360" y="120" text-anchor="middle" fill="#999" font-size="13">Geen data in deze periode</text>'; return; }
+  let tmin=Infinity,tmax=-Infinity,vmin=Infinity,vmax=-Infinity;
+  all.forEach(p=>{ tmin=Math.min(tmin,p.ts); tmax=Math.max(tmax,p.ts); vmin=Math.min(vmin,p.v); vmax=Math.max(vmax,p.v); });
+  if(tmax===tmin) tmax=tmin+1;
+  const pad=(vmax-vmin)*0.08||1; vmin-=pad; vmax+=pad;
+  const X=t=>ml+(t-tmin)/(tmax-tmin)*(W-ml-mr);
+  const Y=v=>mt+(1-(v-vmin)/(vmax-vmin))*(H-mt-mb);
+  let g='';
+  // y-gridlijnen + labels (3 stuks)
+  for(let i=0;i<=3;i++){ const v=vmin+(vmax-vmin)*i/3, y=Y(v);
+    g+=`<line x1="${ml}" y1="${y.toFixed(1)}" x2="${W-mr}" y2="${y.toFixed(1)}" stroke="#eee"/>`;
+    g+=`<text x="${ml-6}" y="${(y+3).toFixed(1)}" text-anchor="end" font-size="10" fill="#999">${v.toFixed(1)}</text>`;
+  }
+  // x-labels (begin/eind tijd)
+  const fmt=t=>new Date(t).toLocaleString("nl-NL",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+  g+=`<text x="${ml}" y="${H-8}" font-size="10" fill="#999">${fmt(tmin)}</text>`;
+  g+=`<text x="${W-mr}" y="${H-8}" text-anchor="end" font-size="10" fill="#999">${fmt(tmax)}</text>`;
+  // lijnen
+  series.forEach(s=>{
+    const pts=s.pts.filter(p=>p.v!=null&&isFinite(p.v)).sort((a,b)=>a.ts-b.ts);
+    if(pts.length){ const d=pts.map((p,i)=>(i?"L":"M")+X(p.ts).toFixed(1)+" "+Y(p.v).toFixed(1)).join(" ");
+      g+=`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2"/>`; }
+  });
+  // legenda
+  let lx=ml+4;
+  series.forEach(s=>{ g+=`<rect x="${lx}" y="${mt+2}" width="10" height="10" rx="2" fill="${s.color}"/>`+
+    `<text x="${lx+14}" y="${mt+11}" font-size="11" fill="#555">${s.name}</text>`; lx+=14+s.name.length*6.2+16; });
+  svg.innerHTML=g;
+}
+
+async function histFetch(){
+  const st=$("histStatus"); st.textContent="Laden…"; st.style.color="var(--muted)";
+  const hours=+$("histHours").value;
+  try{
+    const r=await fetch("/api/history?hours="+hours,{cache:"no-store"});
+    if(!r.ok) throw new Error("history "+r.status);
+    const j=await r.json();
+    const kT=j.keys&&j.keys.T, kH=j.keys&&j.keys.H;
+    const inT=(j.intree&&j.intree[kT]||[]).map(p=>({ts:+p.ts,v:parseFloat(String(p.value).replace(",","."))}));
+    const inH=(j.intree&&j.intree[kH]||[]).map(p=>({ts:+p.ts,v:parseFloat(String(p.value).replace(",","."))}));
+    const out=(j.uittree||[]);
+    const outT=out.map(p=>({ts:p.ts,v:p.t})), outH=out.map(p=>({ts:p.ts,v:p.rv}));
+    drawChart("chartT",[{name:"Intree",color:"#0e7490",pts:inT},{name:"Uittree (VDB14)",color:"#c2410c",pts:outT}],"°C");
+    drawChart("chartH",[{name:"Intree",color:"#0e7490",pts:inH},{name:"Uittree (VDB14)",color:"#c2410c",pts:outH}],"%");
+    const errs=j.errors||{}; const msg=[];
+    if(errs.intree) msg.push("intree: "+errs.intree);
+    if(errs.uittree) msg.push("uittree: "+errs.uittree);
+    st.textContent = msg.length ? ("deels geladen — "+msg.join(" · ")) : ("geladen · intree "+inT.length+" pt, uittree "+outT.length+" pt");
+    st.style.color = msg.length ? "var(--warn)" : "#0f9d58";
+  }catch(err){ st.textContent="Fout: "+(err.message||err); st.style.color="var(--warn)"; }
+}
 
 function renderOutAge(){
   const el=$("outAge"); if(!el) return;
