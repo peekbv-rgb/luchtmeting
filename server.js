@@ -311,7 +311,4 @@ app.get("/", (req, res) => {
 app.use(express.static(path.join(__dirname)));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("Toren-debiet draait op poort " + PORT);
-  try { refreshOutHistBg(); } catch (_) {}   // vast Excel-historie op de achtergrond opwarmen
-});
+app.listen(PORT, () => console.log("Toren-debiet draait op poort " + PORT));
