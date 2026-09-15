@@ -376,14 +376,16 @@
               <option value="24" selected>24 uur</option>
               <option value="48">48 uur</option>
               <option value="168">7 dagen</option>
+              <option value="720">30 dagen</option>
+              <option value="1440">60 dagen</option>
             </select>
           </label>
           <span id="histStatus" style="font-family:var(--mono);font-size:12px;color:var(--muted)"></span>
         </div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Temperatuur (°C)</div>
-        <svg id="chartT" viewBox="0 0 720 240" style="width:100%;height:auto;background:var(--panel,#fff);border:1px solid var(--line-soft,#eee);border-radius:8px"></svg>
+        <svg id="chartT" viewBox="0 0 720 240" style="width:100%;height:auto;background:#ffffff;border:1px solid #e6ebf0;border-radius:8px"></svg>
         <div style="font-size:12px;color:var(--muted);margin:14px 0 4px">Relatieve vochtigheid (%)</div>
-        <svg id="chartH" viewBox="0 0 720 240" style="width:100%;height:auto;background:var(--panel,#fff);border:1px solid var(--line-soft,#eee);border-radius:8px"></svg>
+        <svg id="chartH" viewBox="0 0 720 240" style="width:100%;height:auto;background:#ffffff;border:1px solid #e6ebf0;border-radius:8px"></svg>
         <div class="note">Intree = <b>ThingsEye</b>-sensor (bovenin), uittree = <b>VDB14</b> (Watertech). De historie komt uit de bronnen zelf; er wordt (nog) niet apart gelogd. Vanaf nu logt de app niets extra's — wil je gegarandeerde eigen logging, dan is een database de volgende stap.</div>
       </div>
     </div>
@@ -405,7 +407,7 @@
       </div>
     </aside>
   </div>
-  <footer>Toren-debiet · lokaal, geen dataverzending · v23</footer>
+  <footer>Toren-debiet · lokaal, geen dataverzending · v26</footer>
 </div>
 
 <script>
