@@ -300,6 +300,58 @@ app.get("/api/history", async (req, res) => {
   }
 });
 
+function fmtLocal(ms){
+  const d = new Date(ms);
+  const p = n => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth()+1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+}
+function sendCsv(res, name, header, rows){
+  const dec = v => (v == null ? "" : String(v).replace(".", ","));   // NL-decimaal voor Excel
+  const body = [header.join(";")].concat(rows.map(r => r.map(dec).join(";"))).join("\r\n");
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", 'attachment; filename="' + name + '"');
+  res.send("\uFEFF" + body);   // BOM zodat Excel de tekens goed leest
+}
+
+// intree (ThingsEye) als CSV
+app.get("/api/intree.csv", async (req, res) => {
+  try {
+    const hours = Math.min(Math.max(parseInt(req.query.hours, 10) || 168, 1), 8760);
+    const d = await historyTE(hours);
+    const T = d[TE_KEY_T] || [], H = d[TE_KEY_H] || [];
+    const map = new Map();
+    T.forEach(p => { const o = map.get(+p.ts) || {}; o.t = parseFloat(String(p.value).replace(",", ".")); map.set(+p.ts, o); });
+    H.forEach(p => { const o = map.get(+p.ts) || {}; o.rv = parseFloat(String(p.value).replace(",", ".")); map.set(+p.ts, o); });
+    const rows = [...map.entries()].sort((a, b) => a[0] - b[0])
+      .map(([ts, o]) => [fmtLocal(ts), o.t != null ? o.t.toFixed(1) : "", o.rv != null ? o.rv.toFixed(1) : ""]);
+    sendCsv(res, "intree_thingseye_" + hours + "u.csv", ["timestamp", "temperatuur_C", "vochtigheid_pct"], rows);
+  } catch (e) { res.status(502).send("fout: " + String(e.message || e)); }
+});
+
+// uittree (VDB14: vaste historie + live) als CSV — begint op het eerste ThingsEye-punt
+app.get("/api/uittree.csv", async (req, res) => {
+  try {
+    const hours = Math.min(Math.max(parseInt(req.query.hours, 10) || 168, 1), 8760);
+    let since = Date.now() - hours * 3600000;
+    // startpunt gelijktrekken met intree: eerste ThingsEye-tijdstip in deze periode
+    try {
+      const d = await historyTE(hours);
+      const T = d[TE_KEY_T] || [], H = d[TE_KEY_H] || [];
+      const first = [...T, ...H].reduce((m, p) => Math.min(m, +p.ts), Infinity);
+      if (isFinite(first)) since = Math.max(since, first);
+    } catch (_) {}
+    let uit = baseHist.filter(p => p.ts >= since);
+    try {
+      const recent = await historyOut();
+      const map = new Map(uit.map(p => [p.ts, p]));
+      recent.forEach(p => { if (p.ts >= since) map.set(p.ts, p); });
+      uit = [...map.values()].sort((a, b) => a.ts - b.ts);
+    } catch (_) {}
+    const rows = uit.map(p => [fmtLocal(p.ts), p.t != null ? p.t.toFixed(1) : "", p.rv != null ? p.rv.toFixed(1) : ""]);
+    sendCsv(res, "uittree_VDB14_" + hours + "u.csv", ["timestamp", "temperatuur_C", "vochtigheid_pct"], rows);
+  } catch (e) { res.status(502).send("fout: " + String(e.message || e)); }
+});
+
 // --- statische app serveren (stond eerder per ongeluk uit) ---
 const fs = require("fs");
 app.get("/", (req, res) => {
