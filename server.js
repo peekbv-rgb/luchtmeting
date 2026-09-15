@@ -199,13 +199,39 @@ async function historyTE(hours){
   if (!token) await login();
   const end = Date.now(), start = end - hours * 3600000;
   const keys = [TE_KEY_T, TE_KEY_H].filter(Boolean).join(",");
-  const url = base() + "/api/plugins/telemetry/DEVICE/" + TE_DEVICE +
+  let url = base() + "/api/plugins/telemetry/DEVICE/" + TE_DEVICE +
     "/values/timeseries?keys=" + encodeURIComponent(keys) +
-    "&startTs=" + start + "&endTs=" + end + "&limit=5000&orderBy=ASC";
+    "&startTs=" + start + "&endTs=" + end + "&orderBy=ASC";
+  if (hours > 48) url += "&interval=3600000&agg=AVG&limit=5000";   // uurgemiddelde bij lange periodes
+  else url += "&limit=50000";
   let r = await fetch(url, { headers: { "X-Authorization": "Bearer " + token } });
   if (r.status === 401) { await login(); r = await fetch(url, { headers: { "X-Authorization": "Bearer " + token } }); }
   if (!r.ok) throw new Error("te-history " + r.status);
   return r.json();   // { <TE_KEY_T>:[{ts,value}], <TE_KEY_H>:[...] }
+}
+
+let outHistCache = { at: 0, data: null };
+const OUT_HIST_MS = 600000; // volledige Excel-historie 10 min cachen
+
+async function historyOutExcel(){
+  const now = Date.now();
+  if (outHistCache.data && now - outHistCache.at < OUT_HIST_MS) return outHistCache.data;
+  const r = await nodeFetch(OUT_EXCEL_URL, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "*/*" }, redirect: "follow", timeout: 60000 });
+  if (!r.ok) throw new Error("excel " + r.status);
+  const buf = await r.buffer();
+  const wb = XLSX.read(buf, { type: "buffer", cellDates: false, cellNF: false, cellStyles: false, cellHTML: false });
+  const ws = wb.Sheets[OUT_SHEET];
+  if (!ws) throw new Error("tabblad '" + OUT_SHEET + "' niet gevonden");
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+  const arr = [];
+  for (let i = 1; i < rows.length; i++){   // rij 0 = koppen
+    const row = rows[i] || [];
+    const ts = cellToTs(row[0]), t = toNum2(row[2]), rv = toNum2(row[1]);
+    if (ts != null && (t != null || rv != null)) arr.push({ ts, t, rv });
+  }
+  arr.sort((a, b) => a.ts - b.ts);
+  outHistCache = { at: now, data: arr };
+  return arr;
 }
 
 async function historyOut(){
@@ -215,24 +241,42 @@ async function historyOut(){
   if (!r.ok) throw new Error("sensor " + r.status);
   const html = await r.text();
   const text = html.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ");
-  const re = /(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})[\s\S]{0,40}?(-?\d+[.,]\d+)\s*°?\s*C\s+(\d+[.,]\d+)\s*%/g;
-  const arr = []; let m;
-  while ((m = re.exec(text))){
-    const t = Date.parse(m[1].replace(" ", "T"));
-    if (!isNaN(t)) arr.push({ ts: t, t: toNum2(m[2]), rv: toNum2(m[3]) });
-  }
-  arr.sort((a, b) => a.ts - b.ts);   // oplopend in tijd
-  return arr;
+  // tijdstempels en metingen apart oppikken (volgorde onafhankelijk van welke eerst staat)
+  const stamps = [...text.matchAll(/(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})/g)].map(m => {
+    const t = Date.parse(m[1] + "T" + m[2]); return isNaN(t) ? null : t;
+  }).filter(x => x !== null);
+  const meas = [...text.matchAll(/(-?\d+[.,]\d+)\s*°?\s*C\s+(\d+[.,]\d+)\s*%/g)].map(m => ({ t: toNum2(m[1]), rv: toNum2(m[2]) }));
+  // "Graph" toont de nieuwste meting los bovenaan -> 1 meting extra zonder eigen rij; align op de kortste
+  let ms = meas, ss = stamps;
+  if (ms.length === ss.length + 1) ms = ms.slice(1);        // laat de losse Graph-waarde vallen
+  const n = Math.min(ms.length, ss.length);
+  const arr = [];
+  for (let i = 0; i < n; i++) arr.push({ ts: ss[i], t: ms[i].t, rv: ms[i].rv });
+  // ontdubbelen op ts en oplopend sorteren
+  const seen = new Set();
+  const out = arr.filter(p => (seen.has(p.ts) ? false : (seen.add(p.ts), true))).sort((a, b) => a.ts - b.ts);
+  return out;
 }
 
 app.get("/api/history", async (req, res) => {
-  const hours = Math.min(Math.max(parseInt(req.query.hours, 10) || 24, 1), 168);
+  const hours = Math.min(Math.max(parseInt(req.query.hours, 10) || 24, 1), 1560);  // tot ~65 dagen
   const result = { intree: null, uittree: null, errors: {} };
   try { result.intree = await historyTE(hours); } catch (e) { result.errors.intree = String(e.message || e); }
+  let outAll = [];
   try {
-    const since = Date.now() - hours * 3600000;
-    result.uittree = (await historyOut()).filter(p => p.ts >= since);
-  } catch (e) { result.errors.uittree = String(e.message || e); }
+    // >24 u: volledige historie uit de Excel; anders de snelle sensorpagina (laatste ~50)
+    outAll = hours > 24 ? await historyOutExcel() : await historyOut();
+  } catch (e) {
+    result.errors.uittree = String(e.message || e);
+    try { outAll = await historyOut(); } catch (_) { outAll = []; }   // val terug op sensorpagina
+  }
+  const since = Date.now() - hours * 3600000;
+  const filtered = outAll.filter(p => p.ts >= since);
+  result.uittree = filtered.length ? filtered : outAll;
+  if (req.query.debug) {
+    return res.json({ hours, since, uittree_total: outAll.length, uittree_in_window: filtered.length,
+      uittree_sample: outAll.slice(-5), keys: { T: TE_KEY_T, H: TE_KEY_H } });
+  }
   res.json({ hours, keys: { T: TE_KEY_T, H: TE_KEY_H }, ...result });
 });
 
